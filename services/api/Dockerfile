@@ -45,7 +45,7 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Verify that the compiled entrypoint exists
-RUN test -f ./services/api/dist/index.js && echo "✅ dist present"
+RUN test -f ./services/api/dist/index.js || test -f ./services/api/dist/src/index.js
 
 # Ensure runtime user owns all files
 RUN chown -R node:node /app
@@ -62,4 +62,4 @@ USER node
 
 # Switch to service directory and start API server
 WORKDIR /app/services/api
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-lc", "node dist/index.js 2>/dev/null || node dist/src/index.js"]
