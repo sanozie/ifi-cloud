@@ -1,15 +1,20 @@
-# Render deployment configuration
-# https://render.com/docs/yaml-spec
-
-# Note: PostgreSQL and Redis are managed services on Render
-# Create these services in the Render dashboard and set the 
-# DATABASE_URL and REDIS_URL environment variables in each service
+# Render Blueprint spec: https://docs.render.com/blueprint-spec
+# This blueprint provisions:
+# - Postgres: ifi-store
+# - Redis (Key Value): ifi-cache
+# - Web (Docker): ifi-api
+# - Worker (Docker): ifi-worker
+# Notes:
+# - DATABASE_URL is wired from the database via fromDatabase.property: connectionString
+# - REDIS_URL is wired from the redis service via fromService.property: connectionString
+# - API ensures pgvector at startup (CREATE EXTENSION IF NOT EXISTS "vector")
 
 databases:
   - name: ifi-store
     databaseName: ifi
     user: venture
     plan: starter
+    ipAllowList: [] # Empty array means allow only internal connections
 
 services:
   # API Service
@@ -20,6 +25,9 @@ services:
     dockerContext: .
     plan: starter
     autoDeploy: true
+    healthCheckPath: /api/health
+    healthCheckTimeout: 5
+    postdeploy: yarn workspace @ifi/db prisma db push
     envVars:
       - key: PORT
         value: 3000
@@ -27,9 +35,14 @@ services:
         value: production
       # Managed database & redis connections
       - key: DATABASE_URL
-        fromDatabase: ifi-postgres
+        fromDatabase:
+          name: ifi-store
+          property: connectionString
       - key: REDIS_URL
-        fromService: ifi-redis
+        fromService:
+          type: redis
+          name: ifi-cache
+          property: connectionString
       # Auth - Clerk
       - key: CLERK_PUBLISHABLE_KEY
         sync: false
@@ -79,9 +92,14 @@ services:
         value: production
       # Managed database & redis connections
       - key: DATABASE_URL
-        fromDatabase: ifi-store
+        fromDatabase:
+          name: ifi-store
+          property: connectionString
       - key: REDIS_URL
-        fromService: ifi-cache
+        fromService:
+          type: redis
+          name: ifi-cache
+          property: connectionString
       # Auth - Clerk
       - key: CLERK_PUBLISHABLE_KEY
         sync: false
@@ -122,3 +140,5 @@ services:
   - type: redis
     name: ifi-cache
     plan: starter
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # Empty array means allow only internal connections
