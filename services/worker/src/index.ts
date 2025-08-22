@@ -1,6 +1,6 @@
 import { getJob, updateJob, prisma } from '@ifi/db';
 import { JobStatus } from '@ifi/shared';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 // Optional Redis client
 let redisClient: Redis | null = null;
@@ -12,16 +12,17 @@ if (process.env.REDIS_URL) {
     console.log('✅ Connected to Redis');
     
     // Subscribe to the jobs channel
-    redisClient.subscribe('jobs', (err) => {
-      if (err) {
-        console.error('❌ Failed to subscribe to Redis channel:', err);
-      } else {
+    redisClient
+      .subscribe('jobs')
+      .then(() => {
         console.log('✅ Subscribed to jobs channel');
-      }
-    });
+      })
+      .catch((err: Error) => {
+        console.error('❌ Failed to subscribe to Redis channel:', err);
+      });
     
     // Listen for messages
-    redisClient.on('message', (channel, message) => {
+    redisClient.on('message', (channel: string, message: string) => {
       if (channel === 'jobs') {
         console.log('📨 Received job notification:', message);
         // We'll still rely on polling for job processing
@@ -29,7 +30,7 @@ if (process.env.REDIS_URL) {
     });
     
     // Handle Redis errors
-    redisClient.on('error', (err) => {
+    redisClient.on('error', (err: Error) => {
       console.error('❌ Redis error:', err);
     });
   } catch (error) {
