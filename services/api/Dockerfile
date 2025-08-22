@@ -44,8 +44,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # Copy generated Prisma client JS files as well
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Verify that the compiled entrypoint exists
-RUN test -f ./services/api/dist/index.js || test -f ./services/api/dist/src/index.js
+# Verify that the compiled entrypoint exists (any index.js under dist/)
+RUN test -n "$(find ./services/api/dist -maxdepth 3 -type f -name index.js | head -n1)"
 
 # Ensure runtime user owns all files
 RUN chown -R node:node /app
@@ -62,4 +62,4 @@ USER node
 
 # Switch to service directory and start API server
 WORKDIR /app/services/api
-CMD ["sh", "-lc", "node dist/index.js 2>/dev/null || node dist/src/index.js"]
+CMD ["sh", "-lc", "ENTRY=$(find dist -maxdepth 3 -type f -name index.js | head -n1); node \"$ENTRY\""]
