@@ -3,6 +3,8 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Explicit binary targets to ensure compatible engines on Render (OpenSSL 3.0)
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
   previewFeatures = ["postgresqlExtensions", "fullTextSearch", "fullTextIndex"]
 }
 

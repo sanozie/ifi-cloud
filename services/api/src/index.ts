@@ -134,7 +134,7 @@ async function init() {
   }
 
   // Start HTTP server
-  app.listen(PORT);
+  app.listen({ port: PORT, hostname: '0.0.0.0' });
   console.log(`🚀 API server running at http://localhost:${PORT}`);
 }
 
