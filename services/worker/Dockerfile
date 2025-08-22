@@ -8,10 +8,10 @@ COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY services ./services
 
-# Install deps without running lifecycle scripts
+# Install deps
 RUN yarn install
 
-# Generate Prisma client and build all workspaces
+# Generate Prisma client and build workspaces
 RUN yarn workspace @ifi/db prisma generate
 RUN yarn workspace @ifi/shared build \
     && yarn workspace @ifi/db build \
@@ -33,4 +33,6 @@ COPY --from=builder /app/services/worker/dist ./services/worker/dist
 ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/worker
+
+EXPOSE 3000
 CMD ["node", "dist/index.js"]

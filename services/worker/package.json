@@ -3,14 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "packageManager": "yarn@4.3.1",
   "main": "dist/index.js",
+  "packageManager": "yarn@4.3.1",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo 'no lint'"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@ifi/db": "workspace:*",
