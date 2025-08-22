@@ -2,8 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "declaration": false,
-    "baseUrl": ".",
+    "declaration": false
     /* inherit path mappings from the repo root */
   },
   "include": ["src/**/*.ts"]

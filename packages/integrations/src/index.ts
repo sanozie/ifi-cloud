@@ -7,7 +7,7 @@ import {
   createGitHubApp,
   getInstallationOctokit,
   createPullRequest,
-} from './github';
+} from './github.js';
 
 // Import Notion helpers
 import {
@@ -15,7 +15,7 @@ import {
   listDatabases,
   getDatabase,
   queryDatabase,
-} from './notion';
+} from './notion.js';
 
 // Export all GitHub helpers
 export const github = {
