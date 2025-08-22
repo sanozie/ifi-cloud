@@ -55,7 +55,7 @@ export async function createPullRequest(params: {
 }) {
   const octokit = await getInstallationOctokit(params.installationId);
   
-  return octokit.rest.pulls.create({
+  return octokit.request('POST /repos/{owner}/{repo}/pulls', {
     owner: params.owner,
     repo: params.repo,
     title: params.title,
