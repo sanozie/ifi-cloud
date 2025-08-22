@@ -4,6 +4,7 @@ RUN corepack enable
 
 # Copy monorepo (enough for Yarn workspaces)
 COPY package.json yarn.lock .yarnrc.yml ./
+COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY services ./services
 
