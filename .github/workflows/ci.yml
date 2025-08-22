@@ -13,12 +13,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x with Corepack
+      - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'yarn'
-          corepack: true
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack and set Yarn 4.3.1
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+          yarn --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -26,7 +32,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
   typecheck:
     needs: setup
@@ -35,12 +41,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x with Corepack
+      - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'yarn'
-          corepack: true
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack and set Yarn 4.3.1
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+          yarn --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -48,7 +60,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
       - name: Generate Prisma client
         run: yarn workspace @ifi/db prisma generate
@@ -63,12 +75,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x with Corepack
+      - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'yarn'
-          corepack: true
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack and set Yarn 4.3.1
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+          yarn --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -76,7 +94,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
       - name: Generate Prisma client
         run: yarn workspace @ifi/db prisma generate
@@ -91,12 +109,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x with Corepack
+      - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'yarn'
-          corepack: true
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable Corepack and set Yarn 4.3.1
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+          yarn --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -104,7 +128,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
       - name: Generate Prisma client
         run: yarn workspace @ifi/db prisma generate
