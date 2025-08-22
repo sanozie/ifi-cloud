@@ -13,7 +13,7 @@ databases:
   - name: ifi-store
     databaseName: ifi
     user: venture
-    plan: starter
+    plan: free
     ipAllowList: [] # Empty array means allow only internal connections
 
 services:
@@ -23,7 +23,7 @@ services:
     env: docker
     dockerfilePath: ./services/api/Dockerfile
     dockerContext: .
-    plan: starter
+    plan: free
     autoDeploy: true
     healthCheckPath: /api/health
     envVars:
@@ -83,7 +83,7 @@ services:
     env: docker
     dockerfilePath: ./services/worker/Dockerfile
     dockerContext: .
-    plan: starter
+    plan: free
     autoDeploy: true
     envVars:
       - key: NODE_ENV
@@ -137,6 +137,6 @@ services:
   # Redis (managed service)
   - type: redis
     name: ifi-cache
-    plan: starter
+    plan: free
     maxmemoryPolicy: allkeys-lru
     ipAllowList: [] # Empty array means allow only internal connections
