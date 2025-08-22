@@ -21,12 +21,12 @@ RUN ls -la /app/services/api/
 RUN ls -la /app/services/api/dist/ || echo "dist directory not found"
 
 # --- Runtime ---
-FROM oven/bun:1
+FROM node:20-slim
 
 # Set working directory for the runtime image
 WORKDIR /app
 
-# Prisma requires OpenSSL at runtime in Debian-based images (bun image is debian-based)
+# Prisma requires OpenSSL at runtime in Debian-based images
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy production artifacts from the builder
@@ -38,8 +38,8 @@ COPY --from=builder /app/services/api/dist ./services/api/dist
 # Environment configuration
 ENV NODE_ENV=production
 
-# Switch to non-root bun user provided by the image
-USER bun
+# Switch to non-root node user provided by the image
+USER node
 
 # Move into the API service directory for execution
 WORKDIR /app/services/api
@@ -47,5 +47,5 @@ WORKDIR /app/services/api
 # Expose application port
 EXPOSE 3000
 
-# Start the Elysia server with Bun
-CMD ["bun", "dist/index.js"]
+# Start the Elysia server with Node
+CMD ["node", "dist/index.js"]
