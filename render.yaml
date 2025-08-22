@@ -5,6 +5,12 @@
 # Create these services in the Render dashboard and set the 
 # DATABASE_URL and REDIS_URL environment variables in each service
 
+databases:
+  - name: ifi-store
+    databaseName: ifi
+    user: venture
+    plan: starter
+
 services:
   # API Service
   - type: web
@@ -19,12 +25,11 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
-      # Database URL should be set from Render PostgreSQL service
+      # Managed database & redis connections
       - key: DATABASE_URL
-        sync: false
-      # Redis URL should be set from Render Redis service
+        fromDatabase: ifi-postgres
       - key: REDIS_URL
-        sync: false
+        fromService: ifi-redis
       # Auth - Clerk
       - key: CLERK_PUBLISHABLE_KEY
         sync: false
@@ -72,12 +77,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Database URL should be set from Render PostgreSQL service
+      # Managed database & redis connections
       - key: DATABASE_URL
-        sync: false
-      # Redis URL should be set from Render Redis service
+        fromDatabase: ifi-store
       - key: REDIS_URL
-        sync: false
+        fromService: ifi-cache
       # Auth - Clerk
       - key: CLERK_PUBLISHABLE_KEY
         sync: false
@@ -113,3 +117,8 @@ services:
         value: 60000
       - key: CODEGEN_COST_CAP_USD
         value: 1.00
+
+  # Redis (managed service)
+  - type: redis
+    name: ifi-cache
+    plan: starter

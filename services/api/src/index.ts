@@ -3,6 +3,7 @@ import { createThread, addMessage, createJob, getJob, getThread } from '@ifi/db'
 import { ChatRequest, ChatResponse, JobStatus } from '@ifi/shared';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { randomUUID } from 'crypto';
+import { prisma } from '@ifi/db'; // for extension check
 
 // Get environment variables
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -117,8 +118,28 @@ const app = new Elysia()
     
     return job;
   })
-  .listen(PORT);
+  
+// --- Startup ---------------------------------------------------------------
 
-console.log(`🚀 API server running at http://localhost:${PORT}`);
+async function init() {
+  try {
+    // Ensure pgvector extension exists (idempotent)
+    await prisma.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS "vector"');
+    console.log('✅ pgvector extension ensured');
+  } catch (err) {
+    console.error('❌ Failed to ensure pgvector extension:', err);
+    // Continue; Prisma queries using vector type will fail without the extension
+  }
+
+  // Start HTTP server
+  app.listen(PORT);
+  console.log(`🚀 API server running at http://localhost:${PORT}`);
+}
+
+// Execute startup
+init().catch((err) => {
+  console.error('API startup failed:', err);
+  process.exit(1);
+});
 
 export default app;
