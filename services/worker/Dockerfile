@@ -6,16 +6,11 @@ RUN corepack enable
 # Set working directory
 WORKDIR /app
 
-# Copy package.json, yarn.lock and workspace configs
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY packages/*/package.json ./packages/
-COPY services/*/package.json ./services/
-
-# Install dependencies
-RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
-
-# Copy source code
+# Copy entire repo (preserves workspace graph for Yarn)
 COPY . .
+
+# Install all workspace dependencies without running lifecycle scripts
+RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
 # Generate Prisma client
 RUN yarn workspace @ifi/db run prisma generate
@@ -33,17 +28,21 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy package.json and yarn config
+#   – root manifests
 COPY package.json yarn.lock .yarnrc.yml ./
-COPY packages/*/package.json ./packages/
-COPY services/*/package.json ./services/
+#   – workspaces needed at runtime
+COPY packages ./packages
+COPY services ./services
 
 # Install production dependencies only
-RUN YARN_ENABLE_SCRIPTS=false yarn workspaces focus --all --production
+RUN YARN_ENABLE_SCRIPTS=false yarn workspaces focus @ifi/worker --production
 
 # Copy built files from builder stage
 COPY --from=builder /app/packages/*/dist ./packages/
 COPY --from=builder /app/services/worker/dist ./services/worker/dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Copy generated Prisma client JS files as well
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 # Set environment variables
 ENV NODE_ENV=production
