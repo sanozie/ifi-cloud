@@ -322,9 +322,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@ifi/api@workspace:services/api"
   dependencies:
-    "@ifi/db": "npm:*"
-    "@ifi/providers": "npm:*"
-    "@ifi/shared": "npm:*"
+    "@ifi/db": "workspace:*"
+    "@ifi/providers": "workspace:*"
+    "@ifi/shared": "workspace:*"
     elysia: "npm:^1.0.25"
     file-type: "npm:^20.5.0"
     jose: "npm:^5.9.6"
@@ -333,7 +333,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@ifi/db@npm:*, @ifi/db@workspace:packages/db":
+"@ifi/db@npm:*, @ifi/db@workspace:*, @ifi/db@workspace:packages/db":
   version: 0.0.0-use.local
   resolution: "@ifi/db@workspace:packages/db"
   dependencies:
@@ -354,7 +354,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@ifi/providers@npm:*, @ifi/providers@workspace:packages/providers":
+"@ifi/providers@npm:*, @ifi/providers@workspace:*, @ifi/providers@workspace:packages/providers":
   version: 0.0.0-use.local
   resolution: "@ifi/providers@workspace:packages/providers"
   dependencies:
@@ -363,7 +363,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@ifi/shared@npm:*, @ifi/shared@workspace:packages/shared":
+"@ifi/shared@workspace:*, @ifi/shared@workspace:packages/shared":
   version: 0.0.0-use.local
   resolution: "@ifi/shared@workspace:packages/shared"
   dependencies:
@@ -386,9 +386,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@ifi/worker@workspace:services/worker"
   dependencies:
-    "@ifi/db": "npm:*"
-    "@ifi/providers": "npm:*"
-    "@ifi/shared": "npm:*"
+    "@ifi/db": "workspace:*"
+    "@ifi/providers": "workspace:*"
+    "@ifi/shared": "workspace:*"
     ioredis: "npm:^5.4.1"
     tsx: "npm:^4.15.7"
     typescript: "npm:^5.5.4"
