@@ -1,32 +1,38 @@
 FROM node:20-slim AS builder
 WORKDIR /app
-
-# Enable Corepack to ensure the right Yarn version is available
 RUN corepack enable
 
-# Install dependencies with Yarn (copies lockfile if present)
-COPY package.json .yarnrc.yml yarn.lock* ./
+# Copy monorepo (enough for Yarn workspaces)
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY tsconfig.base.json ./
+COPY packages ./packages
+COPY services ./services
+
+# Install deps
 RUN yarn install
 
-# Build TypeScript sources
-COPY tsconfig.json ./
-COPY src ./src
-RUN yarn build
+# Generate Prisma client and build workspaces
+RUN yarn workspace @ifi/db prisma generate
+RUN yarn workspace @ifi/shared build \
+    && yarn workspace @ifi/db build \
+    && yarn workspace @ifi/api build
 
-# --- Runtime image ---
+# --- Runtime ---
 FROM node:20-slim
 WORKDIR /app
 
-# Production environment
-ENV NODE_ENV=production
+# Prisma requires OpenSSL at runtime in Debian-based images
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-# Copy runtime essentials
-COPY package.json .
+# Copy production artifacts and dependencies
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/services/api/package.json ./services/api/package.json
+COPY --from=builder /app/services/api/dist ./services/api/dist
 
-# Expose port expected by Render
+ENV NODE_ENV=production
+USER node
+WORKDIR /app/services/api
+
 EXPOSE 3000
-
-# Start the server
 CMD ["node", "dist/index.js"]

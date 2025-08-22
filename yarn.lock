@@ -315,6 +315,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@ifi/api@workspace:services/api"
   dependencies:
+    "@ifi/db": "workspace:*"
+    "@ifi/shared": "workspace:*"
     "@types/express": "npm:^4.17.21"
     "@types/node": "npm:^20.14.9"
     express: "npm:^4.19.2"
