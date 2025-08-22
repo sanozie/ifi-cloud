@@ -44,11 +44,18 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # Copy generated Prisma client JS files as well
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Verify that the compiled entrypoint exists
+RUN test -f ./services/worker/dist/index.js && echo "✅ dist present"
+
+# Ensure runtime user owns all files
+RUN chown -R node:node /app
+
 # Set environment variables
 ENV NODE_ENV=production
 
 # Run as non-root user
 USER node
 
-# Start worker service
-CMD ["node", "services/worker/dist/index.js"]
+# Switch to service directory and start worker
+WORKDIR /app/services/worker
+CMD ["node", "dist/index.js"]
