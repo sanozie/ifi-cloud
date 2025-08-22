@@ -23,6 +23,7 @@ services:
     env: docker
     dockerfilePath: ./services/api/Dockerfile
     dockerContext: .
+    runtime: node
     plan: free
     autoDeploy: true
     healthCheckPath: /api/health
@@ -82,6 +83,7 @@ services:
     name: ifi-worker
     env: docker
     dockerfilePath: ./services/worker/Dockerfile
+    runtime: node
     dockerContext: .
     plan: free
     autoDeploy: true

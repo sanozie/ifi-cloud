@@ -38,7 +38,7 @@ COPY packages/*/package.json ./packages/
 COPY services/*/package.json ./services/
 
 # Install production dependencies only
-RUN yarn install --immutable --production
+RUN YARN_ENABLE_SCRIPTS=false yarn workspaces focus --all --production
 
 # Copy built files from builder stage
 COPY --from=builder /app/packages/*/dist ./packages/
