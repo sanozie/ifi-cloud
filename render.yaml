@@ -17,16 +17,15 @@ databases:
     ipAllowList: [] # Empty array means allow only internal connections
 
 services:
-  # API Service (minimal Node runtime, zero-dependency)
+  # API Service (Docker — minimal image built from services/api)
   - type: web
     name: ifi-api
-    env: node
+    env: docker
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: ./services/api
     plan: free
     autoDeploy: true
     healthCheckPath: /api/health
-    buildCommand: echo "no build"
-    startCommand: >
-      node -e "const http=require('http');const s=http.createServer((req,res)=>{if(req.url==='/api/health'){res.writeHead(200,{ 'Content-Type':'application/json'});res.end(JSON.stringify({status:'ok'}));}else{res.writeHead(200,{ 'Content-Type':'application/json'});res.end(JSON.stringify({message:'IFI API placeholder'}));}});s.listen(process.env.PORT||3000,'0.0.0.0');console.log('HTTP server listening');"
 
   # Worker Service
   - type: worker

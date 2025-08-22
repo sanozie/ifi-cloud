@@ -1,24 +1,21 @@
 {
   "name": "@ifi/api",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "type": "module",
+  "type": "commonjs",
   "main": "dist/index.js",
+  "packageManager": "yarn@4.3.1",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo 'no lint'"
+    "start": "node dist/index.js"
   },
   "dependencies": {
-    "@ifi/db": "workspace:*",
-    "@ifi/providers": "workspace:*",
-    "@ifi/shared": "workspace:*",
-    "elysia": "^1.0.25",
-    "file-type": "^20.5.0",
-    "jose": "^5.9.6"
+    "express": "^4.19.2"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
     "tsx": "^4.15.7",
     "typescript": "^5.5.4"
   }
