@@ -11,9 +11,9 @@
     "lint": "echo 'no lint'"
   },
   "dependencies": {
-    "@ifi/db": "*",
-    "@ifi/providers": "*",
-    "@ifi/shared": "*",
+    "@ifi/db": "workspace:*",
+    "@ifi/providers": "workspace:*",
+    "@ifi/shared": "workspace:*",
     "elysia": "^1.0.25",
     "file-type": "^20.5.0",
     "jose": "^5.9.6"

@@ -11,9 +11,9 @@
     "lint": "echo 'no lint'"
   },
   "dependencies": {
-    "@ifi/db": "*",
-    "@ifi/providers": "*",
-    "@ifi/shared": "*",
+    "@ifi/db": "workspace:*",
+    "@ifi/providers": "workspace:*",
+    "@ifi/shared": "workspace:*",
     "ioredis": "^5.4.1"
   },
   "devDependencies": {
