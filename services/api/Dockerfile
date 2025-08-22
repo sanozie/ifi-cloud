@@ -18,7 +18,7 @@ RUN yarn install
 COPY . .
 
 # Generate Prisma client
-RUN yarn workspace @ifi/db prisma generate
+RUN yarn workspace @ifi/db run prisma generate
 
 # Build all packages
 RUN yarn build
