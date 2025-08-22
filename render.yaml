@@ -38,7 +38,7 @@ services:
     env: docker
     dockerfilePath: ./services/worker/Dockerfile
     dockerContext: .
-    plan: free
+    plan: starter
     autoDeploy: true
     envVars:
       - key: NODE_ENV
