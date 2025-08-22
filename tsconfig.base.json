@@ -7,8 +7,20 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
-    "types": []
+    "noEmit": false,
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@ifi/shared": ["packages/shared/src/index.ts"],
+      "@ifi/shared/*": ["packages/shared/src/*"],
+      "@ifi/db": ["packages/db/src/index.ts"],
+      "@ifi/db/*": ["packages/db/src/*"],
+      "@ifi/providers": ["packages/providers/src/index.ts"],
+      "@ifi/providers/*": ["packages/providers/src/*"],
+      "@ifi/integrations": ["packages/integrations/src/index.ts"],
+      "@ifi/integrations/*": ["packages/integrations/src/*"]
+    }
   },
   "include": []
 }

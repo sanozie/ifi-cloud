@@ -30,7 +30,7 @@ const app = new Elysia()
   .onError(({ code, error, set }) => {
     if (code === 'VALIDATION') {
       set.status = 400;
-      return { error: 'Bad Request', message: error.message };
+      return { error: 'Bad Request', message: `${error}` };
     }
     
     if (code === 'NOT_FOUND') {
@@ -38,7 +38,9 @@ const app = new Elysia()
       return { error: 'Not Found', message: 'Resource not found' };
     }
     
-    if (error.message === 'Unauthorized') {
+    // Elysia may surface auth failures with a dedicated code; fall back to
+    // string-comparison without touching error.message directly.
+    if (String(error) === 'Error: Unauthorized') {
       set.status = 401;
       return { error: 'Unauthorized', message: 'Invalid or missing authentication' };
     }

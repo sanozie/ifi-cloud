@@ -12,7 +12,7 @@
     "bun": ">=1.1.0"
   },
   "scripts": {
-    "build": "yarn workspaces foreach -A run build",
+    "build": "yarn workspaces foreach -A --topological-dev -j 1 run build",
     "dev": "yarn workspace @ifi/api dev",
     "test": "yarn workspaces foreach -A run test",
     "lint": "yarn workspaces foreach -A run lint",
@@ -21,6 +21,7 @@
     "db:push": "yarn workspace @ifi/db prisma db push && bun run packages/db/prisma/seed.ts"
   },
   "devDependencies": {
+    "@types/node": "^20.14.9",
     "eslint": "^9.8.0",
     "prettier": "^3.3.3",
     "tsx": "^4.15.7",
