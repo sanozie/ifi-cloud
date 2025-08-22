@@ -12,7 +12,7 @@ COPY packages/*/package.json ./packages/
 COPY services/*/package.json ./services/
 
 # Install dependencies
-RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
+RUN yarn install
 
 # Copy source code
 COPY . .
