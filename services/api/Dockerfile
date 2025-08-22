@@ -9,7 +9,7 @@ COPY packages ./packages
 COPY services ./services
 
 # Install deps without running lifecycle scripts
-RUN yarn install
+RUN YARN_ENABLE_SCRIPTS=false yarn install
 
 # Generate Prisma client and build all workspaces
 RUN yarn workspace @ifi/db prisma generate
