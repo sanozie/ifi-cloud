@@ -2,29 +2,31 @@ FROM node:20-slim AS builder
 WORKDIR /app
 RUN corepack enable
 
-# Copy monorepo (enough for Yarn workspaces)
+# Copy workspace manifests
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY tsconfig.base.json ./
-COPY packages ./packages
-COPY services ./services
 
-# Install deps
+# Copy only needed packages and worker service
+COPY packages ./packages
+COPY services/worker ./services/worker
+
+# Install deps (node-modules linker per .yarnrc.yml)
 RUN yarn install
 
-# Generate Prisma client and build workspaces
+# Generate Prisma client for db package
 RUN yarn workspace @ifi/db prisma generate
-RUN yarn workspace @ifi/shared build \
-    && yarn workspace @ifi/db build \
-    && yarn workspace @ifi/worker build
 
-# --- Runtime ---
+# Build in topological order to ensure deps are compiled before dependents
+RUN yarn workspaces foreach -A --topological-dev -j 1 run build
+
+# ---- Runtime ----
 FROM node:20-slim
 WORKDIR /app
 
-# Prisma requires OpenSSL at runtime in Debian-based images
+# Prisma needs OpenSSL at runtime
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
-# Copy production artifacts and dependencies
+# Copy production dependencies and artifacts
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/services/worker/package.json ./services/worker/package.json
@@ -34,5 +36,4 @@ ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/worker
 
-EXPOSE 3000
 CMD ["node", "dist/index.js"]

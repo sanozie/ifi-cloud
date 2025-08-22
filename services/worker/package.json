@@ -12,12 +12,9 @@
   },
   "dependencies": {
     "@ifi/db": "workspace:*",
-    "@ifi/shared": "workspace:*",
-    "express": "^4.19.2",
-    "ioredis": "^5.4.1"
+    "@ifi/shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/node": "^20.14.9",
     "tsx": "^4.15.7",
     "typescript": "^5.5.4"
