@@ -13,7 +13,10 @@ RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
 # Generate Prisma client and build all workspaces
 RUN yarn workspace @ifi/db prisma generate
-RUN yarn build
+RUN yarn workspace @ifi/shared build \
+    && yarn workspace @ifi/providers build \
+    && yarn workspace @ifi/db build \
+    && yarn workspace @ifi/worker build
 
 # --- Runtime ---
 FROM node:20-slim

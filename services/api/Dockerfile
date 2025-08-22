@@ -13,7 +13,10 @@ RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
 # Generate Prisma client and build all workspaces
 RUN yarn workspace @ifi/db prisma generate
-RUN yarn build
+RUN yarn workspace @ifi/shared build \
+    && yarn workspace @ifi/providers build \
+    && yarn workspace @ifi/db build \
+    && yarn workspace @ifi/api build
 
 # --- Runtime ---
 FROM node:20-slim
@@ -31,5 +34,5 @@ COPY --from=builder /app/services/api/dist ./services/api/dist
 ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/api
-
+EXPOSE 3000
 CMD ["node", "dist/index.js"]
