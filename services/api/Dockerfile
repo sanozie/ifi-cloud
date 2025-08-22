@@ -17,6 +17,9 @@ RUN yarn workspace @ifi/shared build \
     && yarn workspace @ifi/db build \
     && yarn workspace @ifi/api build
 
+RUN ls -la /app/services/api/
+RUN ls -la /app/services/api/dist/ || echo "dist directory not found"
+
 # --- Runtime ---
 FROM node:20-slim
 WORKDIR /app

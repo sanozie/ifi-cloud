@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "declaration": false,
-    "baseUrl": "../../",
+    "baseUrl": ".",
     /* inherit path mappings from the repo root */
   },
   "include": ["src/**/*.ts"]
