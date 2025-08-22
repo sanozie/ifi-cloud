@@ -1,0 +1,24 @@
+{
+  "name": "@ifi/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo 'no lint'"
+  },
+  "dependencies": {
+    "@ifi/db": "*",
+    "@ifi/providers": "*",
+    "@ifi/shared": "*",
+    "elysia": "^1.0.25",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "tsx": "^4.15.7",
+    "typescript": "^5.5.4"
+  }
+}

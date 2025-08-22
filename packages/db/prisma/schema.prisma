@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+model Thread {
+  id        String    @id @default(cuid())
+  title     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  // Relations
+  messages  Message[]
+  embeddings Embedding[]
+
+  @@index([createdAt(sort: Desc)])
+}
+
+model Message {
+  id        String    @id @default(cuid())
+  threadId  String
+  role      String
+  content   String    @db.Text
+  createdAt DateTime  @default(now())
+  metadata  Json?
+  
+  // Relations
+  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  embeddings Embedding[]
+
+  @@index([threadId])
+  @@index([createdAt])
+}
+
+model Job {
+  id        String    @id @default(cuid())
+  status    String
+  repo      String
+  branch    String?
+  prUrl     String?
+  error     String?   @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Embedding {
+  id        String    @id @default(cuid())
+  threadId  String?
+  messageId String?
+  vector    Unsupported("vector(1536)")
+  createdAt DateTime  @default(now())
+  
+  // Relations
+  thread    Thread?   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message   Message?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([messageId])
+}

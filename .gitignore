@@ -1,0 +1,50 @@
+# Node
+node_modules
+dist
+build
+coverage
+
+# Yarn
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+yarn-error.log
+
+# Bun
+bun.lockb
+.bun
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build tools
+.turbo
+.vercel
+.next
+.pnpm-store
+
+# IDE
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# macOS
+.DS_Store
+
+# Prisma
+prisma/client
+
+# iOS/Swift
+DerivedData
+xcuserdata
+*.xcodeproj
+.swiftpm
+.build
+
+# Misc
+logs
+*.log

@@ -1,0 +1,115 @@
+# Render deployment configuration
+# https://render.com/docs/yaml-spec
+
+# Note: PostgreSQL and Redis are managed services on Render
+# Create these services in the Render dashboard and set the 
+# DATABASE_URL and REDIS_URL environment variables in each service
+
+services:
+  # API Service
+  - type: web
+    name: ifi-api
+    env: docker
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: .
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      # Database URL should be set from Render PostgreSQL service
+      - key: DATABASE_URL
+        sync: false
+      # Redis URL should be set from Render Redis service
+      - key: REDIS_URL
+        sync: false
+      # Auth - Clerk
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      # AI Providers
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FIREWORKS_API_KEY
+        sync: false
+      # GitHub App Integration
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      # Notion Integration
+      - key: NOTION_TOKEN
+        sync: false
+      # Codegen Configuration
+      - key: CODEGEN_PROVIDER
+        value: fireworks
+      - key: CODEGEN_PLANNER_MODEL
+        value: gpt-5
+      - key: CODEGEN_MODEL
+        value: accounts/fireworks/models/qwen2.5-coder-32b-instruct
+      - key: CODEGEN_MAX_TOKENS
+        value: 8192
+      - key: CODEGEN_TIMEOUT_MS
+        value: 60000
+      - key: CODEGEN_COST_CAP_USD
+        value: 1.00
+
+  # Worker Service
+  - type: worker
+    name: ifi-worker
+    env: docker
+    dockerfilePath: ./services/worker/Dockerfile
+    dockerContext: .
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Database URL should be set from Render PostgreSQL service
+      - key: DATABASE_URL
+        sync: false
+      # Redis URL should be set from Render Redis service
+      - key: REDIS_URL
+        sync: false
+      # Auth - Clerk
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      # AI Providers
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FIREWORKS_API_KEY
+        sync: false
+      # GitHub App Integration
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      # Notion Integration
+      - key: NOTION_TOKEN
+        sync: false
+      # Codegen Configuration
+      - key: CODEGEN_PROVIDER
+        value: fireworks
+      - key: CODEGEN_PLANNER_MODEL
+        value: gpt-5
+      - key: CODEGEN_MODEL
+        value: accounts/fireworks/models/qwen2.5-coder-32b-instruct
+      - key: CODEGEN_MAX_TOKENS
+        value: 8192
+      - key: CODEGEN_TIMEOUT_MS
+        value: 60000
+      - key: CODEGEN_COST_CAP_USD
+        value: 1.00
