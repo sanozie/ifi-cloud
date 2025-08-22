@@ -1,65 +1,34 @@
 FROM node:20-slim AS builder
-
-# Enable corepack for Yarn
+WORKDIR /app
 RUN corepack enable
 
-# Set working directory
-WORKDIR /app
-
-# Copy entire repo (simpler, preserves workspace graph)
-COPY . .
-
-# Install all workspace deps without running lifecycle scripts
-RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
-
-# Generate Prisma client
-RUN yarn workspace @ifi/db run prisma generate
-
-# Build all packages
-RUN yarn build
-
-# Production image
-FROM node:20-slim
-
-# Enable corepack for Yarn
-RUN corepack enable
-
-# Set working directory
-WORKDIR /app
-
-# Copy package.json and yarn config
-#   – root manifests
+# Copy monorepo (enough for Yarn workspaces)
 COPY package.json yarn.lock .yarnrc.yml ./
-#   – workspaces needed at runtime
 COPY packages ./packages
 COPY services ./services
 
-# Install production dependencies only
-RUN YARN_ENABLE_SCRIPTS=false yarn workspaces focus @ifi/api --production
+# Install deps without running lifecycle scripts
+RUN YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
-# Copy built files from builder stage
-COPY --from=builder /app/packages/*/dist ./packages/
+# Generate Prisma client and build all workspaces
+RUN yarn workspace @ifi/db prisma generate
+RUN yarn build
+
+# --- Runtime ---
+FROM node:20-slim
+WORKDIR /app
+
+# Prisma requires OpenSSL at runtime in Debian-based images
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# Copy production artifacts and dependencies
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/services/api/package.json ./services/api/package.json
 COPY --from=builder /app/services/api/dist ./services/api/dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-# Copy generated Prisma client JS files as well
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Verify that the compiled entrypoint exists (any index.js under dist/)
-RUN test -n "$(find ./services/api/dist -maxdepth 3 -type f -name index.js | head -n1)"
-
-# Ensure runtime user owns all files
-RUN chown -R node:node /app
-
-# Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3000
-
-# Expose port
-EXPOSE 3000
-
-# Run as non-root user
 USER node
-
-# Switch to service directory and start API server
 WORKDIR /app/services/api
-CMD ["sh", "-lc", "ENTRY=$(find dist -maxdepth 3 -type f -name index.js | head -n1); node \"$ENTRY\""]
+
+CMD ["node", "dist/index.js"]
