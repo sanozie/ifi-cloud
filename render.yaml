@@ -26,8 +26,6 @@ services:
     plan: starter
     autoDeploy: true
     healthCheckPath: /api/health
-    healthCheckTimeout: 5
-    postdeploy: yarn workspace @ifi/db prisma db push
     envVars:
       - key: PORT
         value: 3000
