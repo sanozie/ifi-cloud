@@ -35,17 +35,20 @@ COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/services/api/package.json ./services/api/package.json
 COPY --from=builder /app/services/api/dist ./services/api/dist
 
+# Verify that the application files are present (build-time check)
+RUN ls -la /app/services/api && ls -la /app/services/api/dist || echo "dist missing"
+
 # Environment configuration
 ENV NODE_ENV=production
 
 # Switch to non-root node user provided by the image
 USER node
 
-# Move into the API service directory for execution
-WORKDIR /app/services/api
+# Move into the compiled output directory for execution
+WORKDIR /app/services/api/dist
 
 # Expose application port
 EXPOSE 3000
 
 # Start the Elysia server with Node
-CMD ["node", "dist/index.js"]
+CMD ["node", "index.js"]
