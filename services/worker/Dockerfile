@@ -17,7 +17,9 @@ RUN yarn install
 RUN yarn workspace @ifi/db prisma generate
 
 # Build in topological order to ensure deps are compiled before dependents
-RUN yarn workspaces foreach -A --topological-dev -j 1 run build
+RUN yarn workspace @ifi/shared build \
+    && yarn workspace @ifi/db build \
+    && yarn workspace @ifi/worker build
 
 # ---- Runtime ----
 FROM node:20-slim

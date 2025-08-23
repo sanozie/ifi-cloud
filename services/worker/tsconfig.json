@@ -2,10 +2,16 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "CommonJS",
+    "moduleResolution": "Node",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ifi/db": ["../../packages/db/dist/src/index.d.ts"],
+      "@ifi/shared": ["../../packages/shared/dist/src/index.d.ts"]
+    },
     "rootDir": "src",
     "outDir": "dist"
   },
