@@ -135,8 +135,7 @@ export async function planWithTools(
   }
 
   // Determine if MCP is configured and obtain tools only when present
-  const hasMcp = Boolean(process.env.MCP_GITHUB_URL);
-  const tools = hasMcp ? getMcpTools() : undefined;
+  const tools = await getMcpToolsAsync();
 
   try {
     const result = await generateText({
@@ -180,19 +179,71 @@ export async function planWithTools(
 /**
  * Build ToolSet that proxies to GitHub MCP server.
  */
-function getMcpTools() {
+async function getMcpToolsAsync(): Promise<any | undefined> {
   const base = process.env.MCP_GITHUB_URL;
   if (!base) {
-    console.warn('MCP_GITHUB_URL not set – planning will proceed without MCP tools');
-    // Cast as any to satisfy ToolSet typing when tools are absent
-    return {} as any;
+    // no MCP configured – caller should treat as undefined
+    return undefined;
   }
 
-  const endpoint = base.replace(/\/$/, '');
+  /** ----------------------------------------------------------------
+   * Preferred path: use experimental_createMcpClient from AI SDK v5
+   * ----------------------------------------------------------------*/
+  try {
+    // Dynamically import so build still works if sdk version mismatches
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const aiMod: any = await import('ai');
+    const createClient =
+      aiMod.experimental_createMcpClient ||
+      aiMod.experimental_createMCPClient ||
+      null;
 
+    if (createClient) {
+      const client = createClient({
+        url: base.replace(/\/$/, ''),
+        name: 'github',
+        headers: process.env.MCP_GITHUB_TOKEN
+          ? { Authorization: `Bearer ${process.env.MCP_GITHUB_TOKEN}` }
+          : undefined,
+      });
+
+      // listTools(): returns array of { name, description, schema? }
+      const remoteTools: any[] =
+        (client.listTools ? await client.listTools() : []) || [];
+
+      // Dynamically wrap every remote tool so Vercel AI SDK can call it
+      const toolset: Record<string, any> = {};
+      for (const t of remoteTools) {
+        const tName = t.name;
+        toolset[tName] = {
+          description: t.description ?? '',
+          // We don't have the per-tool schema → accept any.
+          inputSchema: z.any(),
+          execute: async (args: any) => {
+            if (client.callTool) {
+              return await client.callTool(tName, args);
+            }
+            if (client.invoke) {
+              return await client.invoke(tName, args);
+            }
+            throw new Error('MCP client has no callable executor');
+          },
+        };
+      }
+      return toolset as any;
+    }
+  } catch (err) {
+    console.warn('experimental_createMcpClient not available – falling back to HTTP search only', err);
+  }
+
+  /** ----------------------------------------------------------------
+   * Fallback: only expose the basic search tool via HTTP gateway
+   * ----------------------------------------------------------------*/
+  const endpoint = base.replace(/\/$/, '');
   return {
     search: {
-      description: 'Search GitHub repositories and pull requests relevant to the query',
+      description:
+        'Search GitHub repositories and pull requests relevant to the query',
       inputSchema: z.object({ query: z.string() }),
       execute: async ({ query }: { query: string }) => {
         try {
