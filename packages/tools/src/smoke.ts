@@ -13,7 +13,7 @@ async function testOpenAI() {
     console.log('✅ OpenAI planner test successful');
     console.log('Sample output:');
     console.log('---');
-    console.log(result.slice(0, 200) + '...');
+    console.log(result.text.slice(0, 200) + '...');
     console.log('---');
     return true;
   } catch (error) {

@@ -60,26 +60,6 @@ function setupSSE(req: Request, res: Response) {
   return res;
 }
 
-// Simple spec completeness scoring
-function scoreSpecCompleteness(spec: Partial<ImplementationSpec>): { score: number; missing: string[] } {
-  const requiredFields = [
-    'goal', 'repo', 'baseBranch', 'branchPolicy', 'featureName',
-    'deliverables', 'constraints', 'acceptanceCriteria', 'fileTargets'
-  ];
-  
-  const missing = requiredFields.filter(field => !spec[field as keyof ImplementationSpec]);
-  
-  // Additional checks for array fields
-  if (spec.deliverables && spec.deliverables.length === 0) missing.push('deliverables (empty)');
-  if (spec.acceptanceCriteria && spec.acceptanceCriteria.length < 2) missing.push('acceptanceCriteria (need >=2)');
-  if (spec.fileTargets && spec.fileTargets.length === 0) missing.push('fileTargets (empty)');
-  
-  // Calculate score - basic version
-  const score = Math.max(0, Math.min(1, 1 - (missing.length / (requiredFields.length + 3))));
-  
-  return { score, missing };
-}
-
 // Health check (back-compat)
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
@@ -154,29 +134,20 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       acceptanceCriteria: ['Code should work as described'],
       riskNotes: [],
       fileTargets: [],
-      completenessScore: 0
+      // completenessScore removed – user decides when spec is ready
     };
-
-    // Score completeness
-    const { score, missing } = scoreSpecCompleteness(spec);
-    spec.completenessScore = score;
 
     // Save draft spec
     await upsertDraftSpec(thread.id, spec);
 
-    // Determine intent based on completeness
-    const intent: Intent = score >= 0.9 ? 'ready_to_codegen' : 'needs_more_info';
-
     // Publish events
     publish(`thread:${thread.id}`, 'status', { state: 'idle' });
     publish(`thread:${thread.id}`, 'assistant_message', { id: assistantMessage.id, content: assistantMessage.content });
-    publish(`thread:${thread.id}`, 'spec_updated', { completenessScore: score, missing });
     // Publish MCP context suggestions
     publish(`thread:${thread.id}`, 'assistant_context', {
       repos: mcpSuggestions.repos,
       prs: mcpSuggestions.prs,
     });
-    publish(`thread:${thread.id}`, 'intent', { type: intent });
 
     return res.status(200).json({ 
       threadId: thread.id, 
@@ -243,13 +214,6 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
     // Parse and validate spec
     // Cast through `unknown` first to satisfy TypeScript's structural checks
     const spec = draftSpec.specJson as unknown as ImplementationSpec;
-    if (spec.completenessScore < 0.9) {
-      return res.status(400).json({ 
-        error: 'Spec not complete enough', 
-        score: spec.completenessScore,
-        missing: scoreSpecCompleteness(spec).missing
-      });
-    }
 
     // Finalize spec (mark as ready)
     const finalizedSpec = await finalizeSpec(threadId);
