@@ -1,6 +1,6 @@
 {
   "name": "@ifi/worker",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "commonjs",
   "main": "dist/index.js",
@@ -10,10 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js"
   },
-  "dependencies": {
-    "@ifi/db": "workspace:*",
-    "@ifi/shared": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.14.9",
     "tsx": "^4.15.7",
