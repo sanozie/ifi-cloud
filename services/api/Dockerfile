@@ -30,6 +30,20 @@ COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/services/api/package.json ./services/api/package.json
 COPY --from=builder /app/services/api/dist ./services/api/dist
 
+# Ensure workspace modules resolve to source packages (avoid packed copies without dist)
+RUN rm -rf node_modules/@ifi/providers node_modules/@ifi/shared node_modules/@ifi/db \
+ && ln -s ../../packages/providers node_modules/@ifi/providers \
+ && ln -s ../../packages/shared node_modules/@ifi/shared \
+ && ln -s ../../packages/db node_modules/@ifi/db
+
+# Verify internal workspace packages are present with built artifacts
+RUN test -f /app/packages/providers/dist/index.js \
+ && test -f /app/packages/shared/dist/index.js \
+ && test -f /app/packages/db/dist/db/src/index.js \
+ && test -e /app/node_modules/@ifi/providers/package.json \
+ && test -e /app/node_modules/@ifi/shared/package.json \
+ && test -e /app/node_modules/@ifi/db/package.json
+
 ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/api

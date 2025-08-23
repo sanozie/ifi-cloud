@@ -29,6 +29,12 @@ COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/services/worker/package.json ./services/worker/package.json
 COPY --from=builder /app/services/worker/dist ./services/worker/dist
 
+# Ensure workspace modules resolve to source packages (avoid packed copies without dist)
+RUN rm -rf node_modules/@ifi/providers node_modules/@ifi/shared node_modules/@ifi/db \
+ && ln -s ../../packages/providers node_modules/@ifi/providers \
+ && ln -s ../../packages/shared node_modules/@ifi/shared \
+ && ln -s ../../packages/db node_modules/@ifi/db
+
 ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/worker
