@@ -14,7 +14,7 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { providers, planWithTools } from '@ifi/providers';
+import { providers, plan } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
@@ -119,7 +119,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     publish(`thread:${thread.id}`, 'status', { state: 'thinking' });
 
     // Call planner with Vercel-AI tools (includes MCP GitHub suggestions)
-    const planRes = await planWithTools(input, {
+    const planRes = await plan(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
     const assistantContent = planRes.text;

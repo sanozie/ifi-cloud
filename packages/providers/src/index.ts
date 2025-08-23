@@ -47,9 +47,55 @@ const fireworks = process.env.FIREWORKS_API_KEY
 export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
-): Promise<string> {
-  const { text } = await planInternal(prompt, config);
-  return text;
+): Promise<{
+  text: string;
+  suggestions?: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  };
+}> {
+  const mergedConfig = { ...defaultConfig, ...config };
+
+  // If OpenAI not configured, return stub response
+  if (!openai) {
+    console.warn('OpenAI API key not set, returning stub plan');
+    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
+    return { text, suggestions: { repos: [], prs: [] } };
+  }
+
+  // Load MCP tools if available
+  const tools = await getMcpToolsAsync();
+
+  const result = await generateText({
+    model: openai(mergedConfig.plannerModel),
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    tools,
+    maxOutputTokens: mergedConfig.maxTokens,
+    temperature: 0.2,
+  });
+
+  // Extract suggestions from tool results (if any)
+  let suggestions: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  } = { repos: [], prs: [] };
+  const toolResultsAny = (result as any).toolResults as any[] | undefined;
+  if (toolResultsAny && toolResultsAny.length > 0) {
+    const r = toolResultsAny[0]?.result || {};
+    suggestions = {
+      repos: Array.isArray(r.repos) ? r.repos : [],
+      prs: Array.isArray(r.prs) ? r.prs : [],
+    };
+  }
+
+  return { text: result.text, suggestions };
 }
 
 /**
@@ -93,24 +139,6 @@ export const providers = {
 };
 
 export default providers;
-
-/**
- * Planner with Vercel-AI tools (uses MCP GitHub suggestions)
- */
-export async function planWithTools(
-  prompt: string,
-  config: Partial<ProviderConfig> = {}
-): Promise<{
-  text: string;
-  suggestions?: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  };
-}> {
-  return planInternal(prompt, config);
-}
-
-
 
 /**
  * Build ToolSet that proxies to GitHub MCP server.
@@ -175,60 +203,6 @@ async function getMcpToolsAsync(): Promise<any | undefined> {
 
 
 /**
- * Internal helper that always plans with tools (when available)
+ * (planInternal removed – logic is now in plan)
  */
-async function planInternal(
-  prompt: string,
-  config: Partial<ProviderConfig> = {}
-): Promise<{
-  text: string;
-  suggestions?: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  };
-}> {
-  const mergedConfig = { ...defaultConfig, ...config };
-
-  // If OpenAI not configured, return stub response
-  if (!openai) {
-    console.warn('OpenAI API key not set, returning stub plan');
-    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
-    return { text, suggestions: { repos: [], prs: [] } };
-  }
-
-  // Load tools (may be undefined)
-  const tools = await getMcpToolsAsync();
-
-  const result = await generateText({
-    model: openai(mergedConfig.plannerModel),
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
-      },
-      { role: 'user', content: prompt },
-    ],
-    tools,
-    maxOutputTokens: mergedConfig.maxTokens,
-    temperature: 0.2,
-  });
-
-  // Extract suggestions from first tool result (if any)
-  let suggestions: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  } = { repos: [], prs: [] };
-  const toolResultsAny = (result as any).toolResults as any[] | undefined;
-  if (toolResultsAny && toolResultsAny.length > 0) {
-    const r = toolResultsAny[0]?.result || {};
-    suggestions = {
-      repos: Array.isArray(r.repos) ? r.repos : [],
-      prs: Array.isArray(r.prs) ? r.prs : [],
-    };
-  }
-
-  return { text: result.text, suggestions };
-}
-
 
