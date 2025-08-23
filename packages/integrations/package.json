@@ -10,6 +10,7 @@
     "lint": "echo 'no lint'"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4",
     "@notionhq/client": "^2.2.15",
     "@octokit/app": "^14.0.0"
   },
