@@ -21,6 +21,15 @@ RUN node_modules/.bin/tsc -p packages/shared/tsconfig.json \
  && ls -l packages/shared/dist/index.js \
  && ls -l packages/providers/dist/index.js \
  && ls -l packages/db/dist/db/src/index.js
+# Normalize providers build output path to expected location
+RUN if [ -f packages/providers/dist/providers/src/index.js ]; then \
+      mv packages/providers/dist/providers/src/index.* packages/providers/dist/ && \
+      rm -rf packages/providers/dist/providers; \
+    elif [ -f packages/providers/dist/src/index.js ]; then \
+      mv packages/providers/dist/src/index.* packages/providers/dist/ && \
+      rm -rf packages/providers/dist/src; \
+    fi \
+ && ls -l packages/providers/dist/index.js
 RUN yarn workspaces foreach -A --topological-dev -j 1 run build
 RUN yarn workspaces focus -A --production
 
