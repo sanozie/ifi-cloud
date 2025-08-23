@@ -19,7 +19,6 @@ RUN node_modules/.bin/tsc -p packages/shared/tsconfig.json \
  && node_modules/.bin/tsc -p packages/providers/tsconfig.json \
  && node_modules/.bin/tsc -p packages/db/tsconfig.json \
  && ls -l packages/shared/dist/index.js \
- && ls -l packages/providers/dist/index.js \
  && ls -l packages/db/dist/db/src/index.js
 # Normalize providers build output path to expected location
 RUN if [ -f packages/providers/dist/providers/src/index.js ]; then \
