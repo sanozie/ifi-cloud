@@ -11,7 +11,6 @@ COPY tsconfig.base.json ./
 
 # Copy only needed packages and worker service
 COPY packages ./packages
-COPY services/api ./services/api
 COPY services/worker ./services/worker
 
 # Install deps (node-modules linker per .yarnrc.yml)
@@ -33,7 +32,6 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 # Copy production dependencies and artifacts
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/services/api ./services/api
 COPY --from=builder /app/services/worker/package.json ./services/worker/package.json
 COPY --from=builder /app/services/worker/dist ./services/worker/dist
 
