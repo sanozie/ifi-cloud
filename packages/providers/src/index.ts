@@ -49,24 +49,11 @@ const fireworks = createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
 export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
-): Promise<{
-  text: string;
-  suggestions?: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  };
-}> {
+)  {
   const mergedConfig = { ...defaultConfig, ...config };
 
-  // If OpenAI not configured, return stub response
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn('OpenAI API key not set, returning stub plan');
-    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
-    return { text, suggestions: { repos: [], prs: [] } };
-  }
-
   // Load MCP tools if available
-  const mcpTools = await getMcpToolsAsync();
+  const mcpTools = await getMcpTools();
   const tools = {
     ...mcpTools,
     web_search_preview: openai.tools.webSearchPreview({
@@ -75,88 +62,14 @@ export async function plan(
   };
 
   // Use streaming API and aggregate results
-  const result = await streamText({
-    model: openai(mergedConfig.plannerModel),
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
-      },
-      { role: 'user', content: prompt },
-    ],
-    tools,
-    maxOutputTokens: mergedConfig.maxTokens,
-    temperature: 0.2,
-  });
-
-  // Aggregate streamed chunks into final text
-  let fullText = '';
-  for await (const chunk of result.textStream) {
-    fullText += chunk;
-  }
-
-  // Extract suggestions from tool results (if any)
-  let suggestions: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  } = { repos: [], prs: [] };
-  
-  // We can't easily get tool results from streamText, so returning empty suggestions for now
-  // This could be enhanced in the future if needed
-
-  return {
-    text: fullText,
-    suggestions,
-  };
-}
-
-/**
- * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
- */
-export async function planStream(
-  prompt: string,
-  config: Partial<ProviderConfig> = {}
-): Promise<any> {
-  const mergedConfig = { ...defaultConfig, ...config };
-
-  // Fallback: no OpenAI key – return a static stream with stub text
-  if (!process.env.OPENAI_API_KEY) {
-    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(text));
-        controller.close();
-      },
-    });
-    return {
-      toUIMessageStreamResponse: () => ({
-        body: stream,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        status: 200,
-      }),
-    };
-  }
-
-  // Load MCP tools if available
-  const mcpTools = await getMcpToolsAsync();
-  const tools = {
-    ...mcpTools,
-    web_search_preview: openai.tools.webSearchPreview({
-      searchContextSize: 'high',
-    }),
-  };
-
-  // Delegate to AI SDK streaming helper
   return streamText({
     model: openai(mergedConfig.plannerModel),
     messages: [
       {
         role: 'system',
-        content:
-          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
+        content: 'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
       },
-      { role: 'user', content: prompt },
+      {role: 'user', content: prompt},
     ],
     tools,
     maxOutputTokens: mergedConfig.maxTokens,
@@ -201,7 +114,6 @@ export async function codegen(
  */
 export const providers = {
   plan,
-  planStream,
   codegen,
 };
 
@@ -210,7 +122,7 @@ export default providers;
 /**
  * Build ToolSet that proxies to GitHub MCP server.
  */
-async function getMcpToolsAsync(): Promise<any | undefined> {
+async function getMcpTools(): Promise<any | undefined> {
   const base = process.env.MCP_GITHUB_URL;
   if (!base) {
     // no MCP configured – caller should treat as undefined
@@ -253,37 +165,6 @@ async function getMcpToolsAsync(): Promise<any | undefined> {
           err
         );
       }
-
-      /** ----------------------------------------------------------------
-       * Fallback: only expose the basic search tool via HTTP gateway
-       * ----------------------------------------------------------------*/
-      const endpoint = base.replace(/\/$/, '');
-      mcpToolsCache = {
-        search: {
-          description:
-            'Search GitHub repositories and pull requests relevant to the query',
-          inputSchema: z.object({ query: z.string() }),
-          execute: async ({ query }: { query: string }) => {
-            try {
-              const res = await fetch(`${endpoint}/search`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query }),
-              });
-              if (!res.ok) {
-                console.warn(`MCP server returned status ${res.status}`);
-                return { repos: [], prs: [] };
-              }
-              return (await res.json()) ?? { repos: [], prs: [] };
-            } catch (err) {
-              console.error('Error contacting MCP server:', err);
-              return { repos: [], prs: [] };
-            }
-          },
-        },
-      } as const;
-      mcpToolsCacheAt = Date.now();
-      return mcpToolsCache;
     } catch (error) {
       // On failure, set cache to undefined but update timestamp for backoff
       mcpToolsCache = undefined;

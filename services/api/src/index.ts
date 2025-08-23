@@ -14,7 +14,7 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { providers, plan, planStream } from '@ifi/providers';
+import { plan } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
@@ -146,18 +146,19 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     }
 
     // Save user message
-    const userMessage = await addMessage({
+    await addMessage({
       threadId: thread.id,
       role: 'user',
       content: input,
     });
 
-    const stream = await planStream(input, {
+    const stream = await plan(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
 
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
+
   } catch (err) {
     console.error('POST /v1/chat/messages error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -168,14 +169,6 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
-    const { confirm, repo, baseBranch = 'main', featureBranch } = req.body || {};
-    
-    if (!confirm) {
-      return res.status(400).json({ error: 'confirmation required' });
-    }
-    if (typeof repo !== 'string' || repo.trim() === '') {
-      return res.status(400).json({ error: 'repo is required' });
-    }
 
     // Get latest draft spec
     const draftSpec = await getLatestDraftSpec(threadId);
