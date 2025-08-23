@@ -20,7 +20,7 @@ services:
   # API Service (Docker — minimal image built from services/api)
   - type: web
     name: ifi-api
-    env: docker
+    runtime: docker
     dockerfilePath: ./services/api/Dockerfile
     dockerContext: .
     plan: free
@@ -35,11 +35,11 @@ services:
   # Worker Service
   - type: worker
     name: ifi-worker
-    env: docker
     dockerfilePath: ./services/worker/Dockerfile
     dockerContext: .
     plan: starter
     autoDeploy: true
+    runtime: docker
     envVars:
       - key: NODE_ENV
         value: production
@@ -94,4 +94,4 @@ services:
     name: ifi-cache
     plan: free
     maxmemoryPolicy: allkeys-lru
-    ipAllowList: [] # Empty array means allow only internal connections
+    ipAllowList: [ ] # Empty array means allow only internal connections
