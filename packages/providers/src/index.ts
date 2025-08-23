@@ -48,28 +48,8 @@ export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
 ): Promise<string> {
-  const mergedConfig = { ...defaultConfig, ...config };
-  // Stub if no OpenAI
-  if (!openai) {
-    console.warn('OpenAI API key not set, returning stub plan');
-    return `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
-  }
-
-  try {
-    const { text } = await generateText({
-      model: openai(mergedConfig.plannerModel),
-      messages: [
-        { role: 'system', content: 'You are a technical planning assistant. Create a clear, step-by-step plan to implement the user’s request. Focus on concrete actions and implementation details.' },
-        { role: 'user', content: prompt },
-      ],
-      maxOutputTokens: mergedConfig.maxTokens,
-      temperature: 0.2,
-    });
-    return text;
-  } catch (error) {
-    console.error('Error generating plan with OpenAI via Vercel AI SDK:', error);
-    throw new Error(`Failed to generate plan: ${(error as Error).message}`);
-  }
+  const { text } = await planInternal(prompt, config);
+  return text;
 }
 
 /**
@@ -127,54 +107,9 @@ export async function planWithTools(
     prs: { fullName: string; number: number; title: string; score: number }[];
   };
 }> {
-  const mergedConfig = { ...defaultConfig, ...config };
-
-  // Fallback to basic plan if OpenAI key missing
-  if (!openai) {
-    const text = await plan(prompt, config);
-    return { text };
-  }
-
-  // Determine if MCP is configured and obtain tools only when present
-  const tools = await getMcpToolsAsync();
-
-  try {
-    const result = await generateText({
-      model: openai(mergedConfig.plannerModel),
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      tools,
-      maxOutputTokens: mergedConfig.maxTokens,
-      temperature: 0.2,
-    });
-
-    // Extract tool result if present and normalise shape
-    let suggestions: {
-      repos: { fullName: string; score: number }[];
-      prs: { fullName: string; number: number; title: string; score: number }[];
-    } = { repos: [], prs: [] };
-    const toolResultsAny = (result as any).toolResults as any[] | undefined;
-    if (toolResultsAny && toolResultsAny.length > 0) {
-      const r = toolResultsAny[0]?.result || {};
-      suggestions = {
-        repos: Array.isArray(r.repos) ? r.repos : [],
-        prs: Array.isArray(r.prs) ? r.prs : [],
-      };
-    }
-
-    return { text: result.text, suggestions };
-  } catch (error) {
-    console.error('Error generating planWithTools:', error);
-    // propagate error upward
-    throw error;
-  }
+  return planInternal(prompt, config);
 }
+
 
 
 /**
@@ -236,6 +171,64 @@ async function getMcpToolsAsync(): Promise<any | undefined> {
       },
     },
   } as const;
+}
+
+
+/**
+ * Internal helper that always plans with tools (when available)
+ */
+async function planInternal(
+  prompt: string,
+  config: Partial<ProviderConfig> = {}
+): Promise<{
+  text: string;
+  suggestions?: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  };
+}> {
+  const mergedConfig = { ...defaultConfig, ...config };
+
+  // If OpenAI not configured, return stub response
+  if (!openai) {
+    console.warn('OpenAI API key not set, returning stub plan');
+    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
+    return { text, suggestions: { repos: [], prs: [] } };
+  }
+
+  // Load tools (may be undefined)
+  const tools = await getMcpToolsAsync();
+
+  const result = await generateText({
+    model: openai(mergedConfig.plannerModel),
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    tools,
+    maxOutputTokens: mergedConfig.maxTokens,
+    temperature: 0.2,
+  });
+
+  // Extract suggestions from first tool result (if any)
+  let suggestions: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  } = { repos: [], prs: [] };
+  const toolResultsAny = (result as any).toolResults as any[] | undefined;
+  if (toolResultsAny && toolResultsAny.length > 0) {
+    const r = toolResultsAny[0]?.result || {};
+    suggestions = {
+      repos: Array.isArray(r.repos) ? r.repos : [],
+      prs: Array.isArray(r.prs) ? r.prs : [],
+    };
+  }
+
+  return { text: result.text, suggestions };
 }
 
 
