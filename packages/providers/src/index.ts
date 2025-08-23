@@ -4,6 +4,8 @@ import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createFireworks } from '@ai-sdk/fireworks';
+import { z } from 'zod';
+import { suggestRepoAndPR } from '@ifi/integrations';
 
 /**
  * Provider configuration
@@ -111,3 +113,70 @@ export const providers = {
 };
 
 export default providers;
+
+/**
+ * Planner with Vercel-AI tools (uses MCP GitHub suggestions)
+ */
+export async function planWithTools(
+  prompt: string,
+  config: Partial<ProviderConfig> = {}
+): Promise<{
+  text: string;
+  suggestions?: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  };
+}> {
+  const mergedConfig = { ...defaultConfig, ...config };
+
+  // Fallback to basic plan if OpenAI key missing
+  if (!openai) {
+    const text = await plan(prompt, config);
+    return { text };
+  }
+
+  // Define tool schema & executor
+  const tools = {
+    suggestReposAndPRs: {
+      description: 'Suggest relevant GitHub repositories and pull requests',
+      inputSchema: z.object({ query: z.string() }),
+      execute: async ({ query }: { query: string }) => {
+        return await suggestRepoAndPR(query);
+      },
+    },
+  } as const;
+
+  try {
+    const result = await generateText({
+      model: openai(mergedConfig.plannerModel),
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      tools,
+      maxOutputTokens: mergedConfig.maxTokens,
+      temperature: 0.2,
+    });
+
+    // extract first tool result if present
+    let suggestions;
+    const toolResultsAny = (result as any).toolResults as any[] | undefined;
+    if (toolResultsAny && toolResultsAny.length > 0) {
+      suggestions = toolResultsAny[0]?.result as Awaited<
+        ReturnType<typeof suggestRepoAndPR>
+      >;
+    }
+
+    return { text: result.text, suggestions };
+  } catch (error) {
+    console.error('Error generating planWithTools:', error);
+    // propagate error upward
+    throw error;
+  }
+}
+
+

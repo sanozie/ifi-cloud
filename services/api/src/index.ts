@@ -14,7 +14,7 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { providers } from '@ifi/providers';
+import { providers, planWithTools } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
@@ -23,8 +23,6 @@ import {
   JobSSEEventPayload,
   Intent,
 } from '@ifi/shared';
-// MCP GitHub suggestions
-import { suggestRepoAndPR } from '@ifi/integrations/mcp';
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
 
@@ -120,15 +118,13 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     // Publish status update
     publish(`thread:${thread.id}`, 'status', { state: 'thinking' });
 
-    // Call planner to get assistant reply
-    const assistantContent = await providers.plan(input, {
+    // Call planner with Vercel-AI tools (includes MCP GitHub suggestions)
+    const planRes = await planWithTools(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
+    const assistantContent = planRes.text;
+    const mcpSuggestions = planRes.suggestions || { repos: [], prs: [] };
 
-    // ------------------------------------------------------------------
-    // Query MCP GitHub server for repo / PR suggestions based on the input
-    // ------------------------------------------------------------------
-    const mcpSuggestions = await suggestRepoAndPR(input);
     const repoCandidate =
       !repo && mcpSuggestions.repos.length > 0
         ? mcpSuggestions.repos[0].fullName
