@@ -17,6 +17,10 @@ import {
 // Configuration
 const intervalMs = Number(process.env.WORKER_POLL_MS || 3000);
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+// Heartbeat config
+const startedAt = Date.now();
+const HEARTBEAT_KEY =
+  process.env.WORKER_HEARTBEAT_KEY || 'ifi:worker:heartbeat';
 let timer: any;
 let stopping = false;
 
@@ -27,6 +31,28 @@ const publisher = new Redis(REDIS_URL);
 function publish(channel: string, event: string, data: any) {
   const payload = JSON.stringify({ event, data });
   return publisher.publish(channel, payload);
+}
+
+// Update Redis heartbeat so other services can check liveness
+async function updateHeartbeat() {
+  try {
+    const now = Date.now();
+    const payload = {
+      ts: now,
+      startedAt,
+      uptimeMs: now - startedAt,
+      pid: process.pid,
+    };
+    // TTL 60s ensures key expires if worker dies
+    await publisher.set(
+      HEARTBEAT_KEY,
+      JSON.stringify(payload),
+      'EX',
+      60
+    );
+  } catch (err) {
+    console.error('[worker] Heartbeat error:', err);
+  }
 }
 
 // Helper to derive feature branch name
@@ -244,7 +270,10 @@ async function tick() {
 
 function start() {
   console.log('[worker] starting');
+  // write initial heartbeat immediately
+  updateHeartbeat();
   timer = setInterval(async () => {
+    await updateHeartbeat();
     await tick();
   }, intervalMs);
 }
