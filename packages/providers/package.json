@@ -10,7 +10,11 @@
     "lint": "echo 'no lint'"
   },
   "dependencies": {
-    "openai": "^4.56.0"
+    "@ai-sdk/fireworks": "^1.0.11",
+    "@ai-sdk/openai": "^2.0.19",
+    "ai": "^5.0.22",
+    "openai": "^4.56.0",
+    "zod": "^4.0.17"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

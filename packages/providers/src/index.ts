@@ -1,5 +1,11 @@
-import OpenAI from 'openai';
 import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
+
+// Vercel AI SDK v5
+import { generateText } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createFireworks } from '@ai-sdk/fireworks';
+import { experimental_createMCPClient } from 'ai';
+import { z } from 'zod';
 
 /**
  * Provider configuration
@@ -23,11 +29,13 @@ export const defaultConfig: ProviderConfig = {
   costCapUsd: parseFloat(process.env.CODEGEN_COST_CAP_USD || '1.0'),
 };
 
-// Initialize OpenAI client if API key is available
-const openaiClient = process.env.OPENAI_API_KEY
-  ? new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
+// Instantiate model providers (null when missing API key so we can fall back to stub)
+const openai = process.env.OPENAI_API_KEY
+  ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+const fireworks = process.env.FIREWORKS_API_KEY
+  ? createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
   : null;
 
 /**
@@ -39,37 +47,55 @@ const openaiClient = process.env.OPENAI_API_KEY
 export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
-): Promise<string> {
+): Promise<{
+  text: string;
+  suggestions?: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  };
+}> {
   const mergedConfig = { ...defaultConfig, ...config };
-  
-  // If OpenAI client is not available, return a stub plan
-  if (!openaiClient) {
+
+  // If OpenAI not configured, return stub response
+  if (!openai) {
     console.warn('OpenAI API key not set, returning stub plan');
-    return `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
+    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
+    return { text, suggestions: { repos: [], prs: [] } };
   }
-  
-  try {
-    const response = await openaiClient.chat.completions.create({
-      model: mergedConfig.plannerModel,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a technical planning assistant. Create a clear, step-by-step plan to implement the user\'s request. Focus on concrete actions and implementation details.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      max_tokens: mergedConfig.maxTokens,
-      temperature: 0.2,
-    });
-    
-    return response.choices[0]?.message?.content || 'Failed to generate plan';
-  } catch (error) {
-    console.error('Error generating plan with OpenAI:', error);
-    throw new Error(`Failed to generate plan: ${(error as Error).message}`);
+
+  // Load MCP tools if available
+  const tools = await getMcpToolsAsync();
+
+  const result = await generateText({
+    model: openai(mergedConfig.plannerModel),
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    tools,
+    maxOutputTokens: mergedConfig.maxTokens,
+    temperature: 0.2,
+  });
+
+  // Extract suggestions from tool results (if any)
+  let suggestions: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  } = { repos: [], prs: [] };
+  const toolResultsAny = (result as any).toolResults as any[] | undefined;
+  if (toolResultsAny && toolResultsAny.length > 0) {
+    const r = toolResultsAny[0]?.result || {};
+    suggestions = {
+      repos: Array.isArray(r.repos) ? r.repos : [],
+      prs: Array.isArray(r.prs) ? r.prs : [],
+    };
   }
+
+  return { text: result.text, suggestions };
 }
 
 /**
@@ -83,38 +109,23 @@ export async function codegen(
   config: Partial<ProviderConfig> = {}
 ): Promise<string> {
   const mergedConfig = { ...defaultConfig, ...config };
-  
-  // If Fireworks API key is not available, return a stub code
-  if (!process.env.FIREWORKS_API_KEY) {
+  // Stub if no Fireworks
+  if (!fireworks) {
     console.warn('Fireworks API key not set, returning stub code');
     return `// Generated stub code for: ${instruction}\n\nfunction implementFeature() {\n  // TODO: Implement the actual feature\n  console.log("Feature implementation pending");\n  return "Not yet implemented";\n}\n`;
   }
-  
+
   try {
-    const response = await (globalThis as any).fetch('https://api.fireworks.ai/inference/v1/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.FIREWORKS_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: mergedConfig.codegenModel,
-        prompt: `You are an expert software developer. Generate code based on the following instruction:\n\n${instruction}\n\nCode:`,
-        max_tokens: mergedConfig.maxTokens,
-        temperature: 0.1,
-        top_p: 0.95,
-      }),
+    const { text } = await generateText({
+      model: fireworks(mergedConfig.codegenModel),
+      prompt: `You are an expert software developer. Generate code based on the following instruction:\n\n${instruction}\n\nCode:`,
+      maxOutputTokens: mergedConfig.maxTokens,
+      temperature: 0.1,
+      topP: 0.95,
     });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Fireworks API error (${response.status}): ${errorText}`);
-    }
-    
-    const data = await response.json();
-    return data.choices[0]?.text || 'Failed to generate code';
+    return text;
   } catch (error) {
-    console.error('Error generating code with Fireworks:', error);
+    console.error('Error generating code with Fireworks via Vercel AI SDK:', error);
     throw new Error(`Failed to generate code: ${(error as Error).message}`);
   }
 }
@@ -128,3 +139,70 @@ export const providers = {
 };
 
 export default providers;
+
+/**
+ * Build ToolSet that proxies to GitHub MCP server.
+ */
+async function getMcpToolsAsync(): Promise<any | undefined> {
+  const base = process.env.MCP_GITHUB_URL;
+  if (!base) {
+    // no MCP configured – caller should treat as undefined
+    return undefined;
+  }
+
+  /** ----------------------------------------------------------------
+   * Preferred path: create client with experimental_createMcpClient
+   * ----------------------------------------------------------------*/
+  try {
+    const client = await experimental_createMCPClient({
+      // Minimal HTTP transport – works with Smithery/AI SDK
+      transport: {
+        type: 'http',
+        url: base.replace(/\/$/, ''),
+      } as any,
+    } as any);
+
+    // Return tools directly; AI SDK can consume them as-is
+    return (await client.tools()) as any;
+  } catch (err) {
+    console.warn(
+      'experimental_createMcpClient failed – falling back to HTTP search tool',
+      err
+    );
+  }
+
+  /** ----------------------------------------------------------------
+   * Fallback: only expose the basic search tool via HTTP gateway
+   * ----------------------------------------------------------------*/
+  const endpoint = base.replace(/\/$/, '');
+  return {
+    search: {
+      description:
+        'Search GitHub repositories and pull requests relevant to the query',
+      inputSchema: z.object({ query: z.string() }),
+      execute: async ({ query }: { query: string }) => {
+        try {
+          const res = await fetch(`${endpoint}/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+          });
+          if (!res.ok) {
+            console.warn(`MCP server returned status ${res.status}`);
+            return { repos: [], prs: [] };
+          }
+          return (await res.json()) ?? { repos: [], prs: [] };
+        } catch (err) {
+          console.error('Error contacting MCP server:', err);
+          return { repos: [], prs: [] };
+        }
+      },
+    },
+  } as const;
+}
+
+
+/**
+ * (planInternal removed – logic is now in plan)
+ */
+

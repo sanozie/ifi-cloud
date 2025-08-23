@@ -17,14 +17,21 @@ datasource db {
 model Thread {
   id        String    @id @default(cuid())
   title     String
+  userId    String?
+  status    String    @default("active") // active | completed | abandoned
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   
   // Relations
   messages  Message[]
   embeddings Embedding[]
+  specs     Spec[]
+  jobs      Job[]
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([status])
 }
 
 model Message {
@@ -34,6 +41,10 @@ model Message {
   content   String    @db.Text
   createdAt DateTime  @default(now())
   metadata  Json?
+  provider  String?
+  tokensPrompt     Int?
+  tokensCompletion Int?
+  costUsd  Float?
   
   // Relations
   thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -43,18 +54,48 @@ model Message {
   @@index([createdAt])
 }
 
+model Spec {
+  id        String   @id @default(cuid())
+  threadId  String
+  version   Int      @default(1)
+  specJson  Json
+  status    String   @default("drafting") // drafting | ready | sent
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  jobs      Job[]
+
+  @@index([threadId])
+  @@index([status])
+}
+
 model Job {
-  id        String    @id @default(cuid())
-  status    String
-  repo      String
-  branch    String?
-  prUrl     String?
-  error     String?   @db.Text
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String   @id @default(cuid())
+  userId        String?
+  threadId      String?
+  specId        String?
+  status        String
+  repo          String
+  baseBranch    String?  @default("main")
+  featureBranch String?
+  prUrl         String?
+  error         String?  @db.Text
+  costsJson     Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user   User?   @relation(fields: [userId], references: [id])
+  thread Thread? @relation(fields: [threadId], references: [id])
+  spec   Spec?   @relation(fields: [specId], references: [id])
+  pullRequests PullRequest[]
 
   @@index([status])
   @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([threadId])
 }
 
 model Embedding {
@@ -70,4 +111,49 @@ model Embedding {
 
   @@index([threadId])
   @@index([messageId])
+}
+
+model User {
+  id       String   @id @default(cuid())
+  clerkId  String?  @unique
+  email    String?  @unique
+  createdAt DateTime @default(now())
+
+  // Relations
+  threads  Thread[]
+  jobs     Job[]
+  deviceTokens DeviceToken[]
+}
+
+model PullRequest {
+  id         String   @id @default(cuid())
+  jobId      String
+  repo       String
+  prNumber   Int
+  url        String
+  status     String
+  headBranch String
+  baseBranch String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([status])
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  userId     String
+  platform   String   @default("ios")
+  token      String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

@@ -48,3 +48,6 @@ export default {
   github,
   notion,
 };
+
+// Re-export full helper surface for external convenience
+export * from './github.js';
