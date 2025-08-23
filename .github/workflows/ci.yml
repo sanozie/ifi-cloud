@@ -13,18 +13,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Enable Corepack and set Yarn 4.3.1
+        run: |
+          corepack enable
+          corepack prepare yarn@4.3.1 --activate
+          yarn --version
+
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: yarn
           cache-dependency-path: yarn.lock
-
-      - name: Enable Corepack and set Yarn 4.3.1
-        run: |
-          corepack enable
-          corepack prepare yarn@4.3.1 --activate
-          yarn --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -58,6 +58,14 @@ jobs:
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
+
+      - name: Cache Yarn cache
+        uses: actions/cache@v4
+        with:
+          path: .yarn/cache
+          key: ${{ runner.os }}-yarn4-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn4-
 
       - name: Install dependencies
         run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
@@ -93,6 +101,14 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache Yarn cache
+        uses: actions/cache@v4
+        with:
+          path: .yarn/cache
+          key: ${{ runner.os }}-yarn4-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn4-
+
       - name: Install dependencies
         run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
@@ -127,6 +143,14 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache Yarn cache
+        uses: actions/cache@v4
+        with:
+          path: .yarn/cache
+          key: ${{ runner.os }}-yarn4-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn4-
+
       - name: Install dependencies
         run: YARN_ENABLE_SCRIPTS=false yarn install --immutable
 
@@ -135,3 +159,19 @@ jobs:
 
       - name: Build packages
         run: yarn build
+
+  docker-build:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        run: docker build -f services/api/Dockerfile -t ifi-api:ci .
+
+      - name: Build Worker image
+        run: docker build -f services/worker/Dockerfile -t ifi-worker:ci .
