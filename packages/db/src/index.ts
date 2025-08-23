@@ -183,7 +183,7 @@ export async function upsertUserByClerk(clerkId: string, email?: string) {
  */
 export function getLatestDraftSpec(threadId: string) {
   return prisma.spec.findFirst({
-    where: { threadId, status: 'drafting' },
+    where: { threadId },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -207,32 +207,18 @@ export async function upsertDraftSpec(
       threadId,
       title: draft.title,
       content: draft.content,
-      status: 'drafting',
       version: 1,
     },
   });
 }
 
 export async function finalizeSpec(threadId: string) {
-  const drafting = await getLatestDraftSpec(threadId);
-  if (!drafting) {
-    throw new Error('No drafting spec found to finalize');
+  const latest = await getLatestDraftSpec(threadId);
+  if (!latest) {
+    throw new Error('No spec found to finalize');
   }
-  // mark current as sent
-  await prisma.spec.update({
-    where: { id: drafting.id },
-    data: { status: 'sent' },
-  });
-  // create ready snapshot with incremented version
-  return prisma.spec.create({
-    data: {
-      threadId,
-      version: drafting.version + 1,
-      title: drafting.title,
-      content: drafting.content,
-      status: 'ready',
-    },
-  });
+  // As of Iteration-2 we no longer track status – simply return the latest spec.
+  return latest;
 }
 
 /**
