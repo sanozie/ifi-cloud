@@ -14,7 +14,7 @@ RUN yarn install --immutable
 # Generate Prisma client and build workspaces
 RUN yarn workspace @ifi/db prisma generate
 RUN yarn workspaces foreach -A --topological-dev -j 1 run build
-RUN yarn workspaces focus @ifi/worker --production
+RUN yarn workspaces focus -A --production
 
 # --- Runtime ---
 FROM node:20-slim
