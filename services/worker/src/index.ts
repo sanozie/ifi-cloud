@@ -12,7 +12,7 @@ import {
   ensureBranch,
   createOrUpdateFile,
   createPullRequest,
-} from '@ifi/integrations/github';
+} from '@ifi/integrations';
 
 // Configuration
 const intervalMs = Number(process.env.WORKER_POLL_MS || 3000);
