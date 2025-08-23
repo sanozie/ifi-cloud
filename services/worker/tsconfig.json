@@ -6,7 +6,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "rootDir": "../..",
+    "rootDir": "src",
     "outDir": "dist",
     "baseUrl": "../..",
     "paths": {
