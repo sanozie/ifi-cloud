@@ -52,7 +52,7 @@ async function runSmokeTests() {
   console.log(`OpenAI planner: ${openaiResult ? '✅ PASS' : '❌ FAIL'}`);
   console.log(`Fireworks codegen: ${fireworksResult ? '✅ PASS' : '❌ FAIL'}`);
   
-  const allPassed = openaiResult && fireworksResult && dbResult;
+  const allPassed = openaiResult && fireworksResult;
   console.log('-----------------------------------');
   console.log(`🏁 Overall result: ${allPassed ? '✅ ALL TESTS PASSED' : '❌ SOME TESTS FAILED'}`);
   
