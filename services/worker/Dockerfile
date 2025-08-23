@@ -63,4 +63,4 @@ USER node
 WORKDIR /app/services/worker
 
 EXPOSE 3000
-CMD ["node", "dist/services/worker/src/index.js"]
+CMD ["sh", "-lc", "node /app/node_modules/.bin/prisma db push --schema=/app/packages/db/prisma/schema.prisma && node dist/services/worker/src/index.js"]
