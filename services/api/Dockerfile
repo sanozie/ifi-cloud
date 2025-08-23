@@ -9,13 +9,13 @@ COPY packages ./packages
 COPY services ./services
 
 # Install deps
-RUN yarn install
+# Immutable install for reproducible builds
+RUN yarn install --immutable
 
-# Generate Prisma client and build workspaces
+# Generate Prisma client, then build all workspaces topologically and focus
 RUN yarn workspace @ifi/db prisma generate
-RUN yarn workspace @ifi/shared build \
-    && yarn workspace @ifi/db build \
-    && yarn workspace @ifi/api build
+RUN yarn workspaces foreach -A --topological-dev -j 1 run build
+RUN yarn workspaces focus @ifi/api --production
 
 # --- Runtime ---
 FROM node:20-slim

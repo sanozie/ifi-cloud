@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ifi/db": "workspace:*",
+    "@ifi/providers": "workspace:*",
     "@ifi/shared": "workspace:*",
     "express": "^4.19.2",
     "ioredis": "^5.7.0"
