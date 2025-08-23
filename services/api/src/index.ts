@@ -14,13 +14,13 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { providers, plan } from '@ifi/providers';
+import { providers, plan, planStream } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
-  ImplementationSpec,
   Intent,
 } from '@ifi/shared';
+import { Readable } from 'stream';
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
 
@@ -122,6 +122,12 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     const { threadId, input } = req.body || {};
     const userId = req.headers['x-user-id'] as string;
 
+    // If caller sets ?stream=1 or x-stream-ui=1 header → stream mode
+    const streamMode =
+      req.query.stream === '1' ||
+      req.headers['x-stream-ui'] === '1' ||
+      false;
+
     if (typeof input !== 'string' || !input.trim()) {
       return res.status(400).json({ error: 'input is required' });
     }
@@ -146,17 +152,40 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    // Publish status update
-    publish(`thread:${thread.id}`, 'status', { state: 'thinking' });
+    /* ------------------------------------------------------------------ */
+    /* Stream mode: pipe UIMessageStreamResponse straight to client       */
+    /* ------------------------------------------------------------------ */
+    if (streamMode) {
+      const stream = await planStream(input, {
+        plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
+      });
 
-    // Call planner with Vercel-AI tools (includes MCP GitHub suggestions)
+      // UIMessageStreamResponse from AI SDK
+      const ui = (stream as any).toUIMessageStreamResponse();
+      // copy status + headers
+      res.status(ui.status || 200);
+      for (const [k, v] of Object.entries(ui.headers || {})) {
+        res.setHeader(k, v as string);
+      }
+
+      // Pipe body
+      if (ui.body) {
+        // Node18 supports Readable.fromWeb
+        Readable.fromWeb(ui.body as any).pipe(res);
+      } else {
+        res.end();
+      }
+      return; // streamed response finished
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Legacy JSON mode: synchronous plan, save markdown draft            */
+    /* ------------------------------------------------------------------ */
+    // Call planner synchronously
     const planRes = await plan(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
     const assistantContent = planRes.text;
-    const mcpSuggestions = planRes.suggestions || { repos: [], prs: [] };
-
-    const repoCandidate = mcpSuggestions.repos[0].fullName;
 
     // Save assistant message
     const assistantMessage = await addMessage({
@@ -164,41 +193,19 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       role: 'assistant',
       content: assistantContent,
       provider: 'openai',
-      // In a real implementation, we'd track tokens and cost
-      tokensPrompt: input.length / 4, // Crude approximation
+      tokensPrompt: input.length / 4,
       tokensCompletion: assistantContent.length / 4,
-      costUsd: 0.01, // Placeholder
+      costUsd: 0.01,
     });
 
-    // Derive a naive spec from input and repo
-    let spec: Partial<ImplementationSpec> = {
-      goal: input,
-      repo: repoCandidate || 'sanozie/ifi',
-      baseBranch: 'main',
-      branchPolicy: { mode: 'new_branch' },
-      featureName: `feature-${Date.now()}`,
-      deliverables: [{ type: 'code', desc: input }],
-      constraints: [],
-      acceptanceCriteria: ['Code should work as described'],
-      riskNotes: [],
-      fileTargets: [],
-    };
+    // Build markdown draft spec (title + plan)
+    const title = input.substring(0, 80);
+    const draftMd = `# ${title}\n\n${assistantContent}`;
+    await upsertDraftSpec(thread.id, { title, content: draftMd });
 
-    // Save draft spec
-    await upsertDraftSpec(thread.id, spec);
-
-    // Publish events
-    publish(`thread:${thread.id}`, 'status', { state: 'idle' });
-    publish(`thread:${thread.id}`, 'assistant_message', { id: assistantMessage.id, content: assistantMessage.content });
-    // Publish MCP context suggestions
-    publish(`thread:${thread.id}`, 'assistant_context', {
-      repos: mcpSuggestions.repos,
-      prs: mcpSuggestions.prs,
-    });
-
-    return res.status(200).json({ 
-      threadId: thread.id, 
-      messageId: assistantMessage.id 
+    return res.status(200).json({
+      threadId: thread.id,
+      messageId: assistantMessage.id,
     });
   } catch (err) {
     console.error('POST /v1/chat/messages error:', err);
@@ -210,10 +217,13 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
-    const { confirm } = req.body || {};
+    const { confirm, repo, baseBranch = 'main', featureBranch } = req.body || {};
     
     if (!confirm) {
       return res.status(400).json({ error: 'confirmation required' });
+    }
+    if (typeof repo !== 'string' || repo.trim() === '') {
+      return res.status(400).json({ error: 'repo is required' });
     }
 
     // Get latest draft spec
@@ -221,10 +231,6 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
     if (!draftSpec) {
       return res.status(404).json({ error: 'No draft spec found' });
     }
-
-    // Parse and validate spec
-    // Cast through `unknown` first to satisfy TypeScript's structural checks
-    const spec = draftSpec.specJson as unknown as ImplementationSpec;
 
     // Finalize spec (mark as ready)
     const finalizedSpec = await finalizeSpec(threadId);
@@ -234,13 +240,10 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
       threadId,
       specId: finalizedSpec.id,
       status: JobStatus.QUEUED,
-      repo: spec.repo,
-      baseBranch: spec.baseBranch,
-      featureBranch: spec.branchPolicy.mode === 'existing' ? spec.branchPolicy.name : undefined,
+      repo,
+      baseBranch,
+      featureBranch,
     });
-
-    // Publish job queued event
-    publish(`job:${job.id}`, 'status', { phase: 'queued' });
 
     return res.status(200).json({ jobId: job.id });
   } catch (err) {

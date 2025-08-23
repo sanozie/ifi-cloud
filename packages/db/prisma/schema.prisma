@@ -58,7 +58,8 @@ model Spec {
   id        String   @id @default(cuid())
   threadId  String
   version   Int      @default(1)
-  specJson  Json
+  title     String
+  content   String   @db.Text
   status    String   @default("drafting") // drafting | ready | sent
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

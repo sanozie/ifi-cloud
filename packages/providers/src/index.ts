@@ -1,7 +1,7 @@
 import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 
 // Vercel AI SDK v5
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createFireworks } from '@ai-sdk/fireworks';
 import { experimental_createMCPClient } from 'ai';
@@ -106,6 +106,59 @@ export async function plan(
 }
 
 /**
+ * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
+ */
+export async function planStream(
+  prompt: string,
+  config: Partial<ProviderConfig> = {}
+): Promise<any> {
+  const mergedConfig = { ...defaultConfig, ...config };
+
+  // Fallback: no OpenAI key – return a static stream with stub text
+  if (!openai) {
+    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(text));
+        controller.close();
+      },
+    });
+    return {
+      toUIMessageStreamResponse: () => ({
+        body: stream,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        status: 200,
+      }),
+    };
+  }
+
+  // Load MCP tools if available
+  const mcpTools = await getMcpToolsAsync();
+  const tools = {
+    ...mcpTools,
+    web_search_preview: openai.tools.webSearchPreview({
+      searchContextSize: 'high',
+    }),
+  };
+
+  // Delegate to AI SDK streaming helper
+  return streamText({
+    model: openai(mergedConfig.plannerModel),
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    tools,
+    maxOutputTokens: mergedConfig.maxTokens,
+    temperature: 0.2,
+  });
+}
+
+/**
  * Generate code using Fireworks
  * @param instruction Instruction for code generation
  * @param config Optional provider configuration
@@ -142,6 +195,7 @@ export async function codegen(
  */
 export const providers = {
   plan,
+  planStream,
   codegen,
 };
 

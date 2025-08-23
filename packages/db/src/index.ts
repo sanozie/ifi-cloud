@@ -188,18 +188,25 @@ export function getLatestDraftSpec(threadId: string) {
   });
 }
 
-export async function upsertDraftSpec(threadId: string, specJson: any) {
+export async function upsertDraftSpec(
+  threadId: string,
+  draft: { title: string; content: string }
+) {
   const existing = await getLatestDraftSpec(threadId);
   if (existing) {
     return prisma.spec.update({
       where: { id: existing.id },
-      data: { specJson: specJson as Prisma.InputJsonValue },
+      data: {
+        title: draft.title,
+        content: draft.content,
+      },
     });
   }
   return prisma.spec.create({
     data: {
       threadId,
-      specJson: specJson as Prisma.InputJsonValue,
+      title: draft.title,
+      content: draft.content,
       status: 'drafting',
       version: 1,
     },
@@ -221,7 +228,8 @@ export async function finalizeSpec(threadId: string) {
     data: {
       threadId,
       version: drafting.version + 1,
-      specJson: drafting.specJson as Prisma.InputJsonValue,
+      title: drafting.title,
+      content: drafting.content,
       status: 'ready',
     },
   });
