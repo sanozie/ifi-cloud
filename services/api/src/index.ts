@@ -152,61 +152,12 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    /* ------------------------------------------------------------------ */
-    /* Stream mode: pipe UIMessageStreamResponse straight to client       */
-    /* ------------------------------------------------------------------ */
-    if (streamMode) {
-      const stream = await planStream(input, {
-        plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
-      });
-
-      // UIMessageStreamResponse from AI SDK
-      const ui = (stream as any).toUIMessageStreamResponse();
-      // copy status + headers
-      res.status(ui.status || 200);
-      for (const [k, v] of Object.entries(ui.headers || {})) {
-        res.setHeader(k, v as string);
-      }
-
-      // Pipe body
-      if (ui.body) {
-        // Node18 supports Readable.fromWeb
-        Readable.fromWeb(ui.body as any).pipe(res);
-      } else {
-        res.end();
-      }
-      return; // streamed response finished
-    }
-
-    /* ------------------------------------------------------------------ */
-    /* Legacy JSON mode: synchronous plan, save markdown draft            */
-    /* ------------------------------------------------------------------ */
-    // Call planner synchronously
-    const planRes = await plan(input, {
+    const stream = await planStream(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
-    const assistantContent = planRes.text;
 
-    // Save assistant message
-    const assistantMessage = await addMessage({
-      threadId: thread.id,
-      role: 'assistant',
-      content: assistantContent,
-      provider: 'openai',
-      tokensPrompt: input.length / 4,
-      tokensCompletion: assistantContent.length / 4,
-      costUsd: 0.01,
-    });
-
-    // Build markdown draft spec (title + plan)
-    const title = input.substring(0, 80);
-    const draftMd = `# ${title}\n\n${assistantContent}`;
-    await upsertDraftSpec(thread.id, { title, content: draftMd });
-
-    return res.status(200).json({
-      threadId: thread.id,
-      messageId: assistantMessage.id,
-    });
+    // UIMessageStreamResponse from AI SDK
+    return stream.toUIMessageStreamResponse();
   } catch (err) {
     console.error('POST /v1/chat/messages error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });

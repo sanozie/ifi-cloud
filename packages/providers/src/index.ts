@@ -29,14 +29,16 @@ export const defaultConfig: ProviderConfig = {
   costCapUsd: parseFloat(process.env.CODEGEN_COST_CAP_USD || '1.0'),
 };
 
-// Instantiate model providers (null when missing API key so we can fall back to stub)
-const openai = process.env.OPENAI_API_KEY
-  ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
+// Cache configuration for MCP tools
+const MCP_CACHE_TTL_MS = parseInt(process.env.MCP_TOOLS_CACHE_TTL_MS || '300000', 10);
+let mcpToolsCache: any | undefined;
+let mcpToolsCacheAt = 0;
+let mcpFetchInFlight: Promise<any> | null = null;
 
-const fireworks = process.env.FIREWORKS_API_KEY
-  ? createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
-  : null;
+// Instantiate model providers (null when missing API key so we can fall back to stub)
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+const fireworks = createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
 
 /**
  * Generate a plan using OpenAI
@@ -57,7 +59,7 @@ export async function plan(
   const mergedConfig = { ...defaultConfig, ...config };
 
   // If OpenAI not configured, return stub response
-  if (!openai) {
+  if (!process.env.OPENAI_API_KEY) {
     console.warn('OpenAI API key not set, returning stub plan');
     const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
     return { text, suggestions: { repos: [], prs: [] } };
@@ -65,7 +67,6 @@ export async function plan(
 
   // Load MCP tools if available
   const mcpTools = await getMcpToolsAsync();
-
   const tools = {
     ...mcpTools,
     web_search_preview: openai.tools.webSearchPreview({
@@ -73,7 +74,7 @@ export async function plan(
     }),
   };
 
-  // --- switched to streaming API ---
+  // Use streaming API and aggregate results
   const result = await streamText({
     model: openai(mergedConfig.plannerModel),
     messages: [
@@ -95,9 +96,18 @@ export async function plan(
     fullText += chunk;
   }
 
+  // Extract suggestions from tool results (if any)
+  let suggestions: {
+    repos: { fullName: string; score: number }[];
+    prs: { fullName: string; number: number; title: string; score: number }[];
+  } = { repos: [], prs: [] };
+  
+  // We can't easily get tool results from streamText, so returning empty suggestions for now
+  // This could be enhanced in the future if needed
+
   return {
     text: fullText,
-    suggestions: { repos: [], prs: [] },
+    suggestions,
   };
 }
 
@@ -111,7 +121,7 @@ export async function planStream(
   const mergedConfig = { ...defaultConfig, ...config };
 
   // Fallback: no OpenAI key – return a static stream with stub text
-  if (!openai) {
+  if (!process.env.OPENAI_API_KEY) {
     const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
     const stream = new ReadableStream({
       start(controller) {
@@ -207,59 +217,85 @@ async function getMcpToolsAsync(): Promise<any | undefined> {
     return undefined;
   }
 
-  /** ----------------------------------------------------------------
-   * Preferred path: create client with experimental_createMcpClient
-   * ----------------------------------------------------------------*/
-  try {
-    const client = await experimental_createMCPClient({
-      // Minimal HTTP transport – works with Smithery/AI SDK
-      transport: {
-        type: 'http',
-        url: base.replace(/\/$/, ''),
-      } as any,
-    } as any);
-
-    // Return tools directly; AI SDK can consume them as-is
-    return (await client.tools()) as any;
-  } catch (err) {
-    console.warn(
-      'experimental_createMcpClient failed – falling back to HTTP search tool',
-      err
-    );
+  // Check if cache is valid
+  if (Date.now() - mcpToolsCacheAt < MCP_CACHE_TTL_MS && mcpToolsCache !== undefined) {
+    return mcpToolsCache;
   }
 
-  /** ----------------------------------------------------------------
-   * Fallback: only expose the basic search tool via HTTP gateway
-   * ----------------------------------------------------------------*/
-  const endpoint = base.replace(/\/$/, '');
-  return {
-    search: {
-      description:
-        'Search GitHub repositories and pull requests relevant to the query',
-      inputSchema: z.object({ query: z.string() }),
-      execute: async ({ query }: { query: string }) => {
-        try {
-          const res = await fetch(`${endpoint}/search`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query }),
-          });
-          if (!res.ok) {
-            console.warn(`MCP server returned status ${res.status}`);
-            return { repos: [], prs: [] };
-          }
-          return (await res.json()) ?? { repos: [], prs: [] };
-        } catch (err) {
-          console.error('Error contacting MCP server:', err);
-          return { repos: [], prs: [] };
-        }
-      },
-    },
-  } as const;
+  // If there's already a fetch in progress, wait for it
+  if (mcpFetchInFlight) {
+    await mcpFetchInFlight;
+    return mcpToolsCache;
+  }
+
+  // Start a new fetch
+  mcpFetchInFlight = (async () => {
+    try {
+      /** ----------------------------------------------------------------
+       * Preferred path: create client with experimental_createMcpClient
+       * ----------------------------------------------------------------*/
+      try {
+        const client = await experimental_createMCPClient({
+          // Minimal HTTP transport – works with Smithery/AI SDK
+          transport: {
+            type: 'http',
+            url: base.replace(/\/$/, ''),
+          } as any,
+        } as any);
+
+        // Cache the tools
+        mcpToolsCache = await client.tools();
+        mcpToolsCacheAt = Date.now();
+        return mcpToolsCache;
+      } catch (err) {
+        console.warn(
+          'experimental_createMcpClient failed – falling back to HTTP search tool',
+          err
+        );
+      }
+
+      /** ----------------------------------------------------------------
+       * Fallback: only expose the basic search tool via HTTP gateway
+       * ----------------------------------------------------------------*/
+      const endpoint = base.replace(/\/$/, '');
+      mcpToolsCache = {
+        search: {
+          description:
+            'Search GitHub repositories and pull requests relevant to the query',
+          inputSchema: z.object({ query: z.string() }),
+          execute: async ({ query }: { query: string }) => {
+            try {
+              const res = await fetch(`${endpoint}/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query }),
+              });
+              if (!res.ok) {
+                console.warn(`MCP server returned status ${res.status}`);
+                return { repos: [], prs: [] };
+              }
+              return (await res.json()) ?? { repos: [], prs: [] };
+            } catch (err) {
+              console.error('Error contacting MCP server:', err);
+              return { repos: [], prs: [] };
+            }
+          },
+        },
+      } as const;
+      mcpToolsCacheAt = Date.now();
+      return mcpToolsCache;
+    } catch (error) {
+      // On failure, set cache to undefined but update timestamp for backoff
+      mcpToolsCache = undefined;
+      mcpToolsCacheAt = Date.now();
+      console.error('Failed to fetch MCP tools:', error);
+      return undefined;
+    } finally {
+      mcpFetchInFlight = null;
+    }
+  })();
+
+  // Wait for the fetch to complete and return the result
+  await mcpFetchInFlight;
+  return mcpToolsCache;
 }
-
-
-/**
- * (planInternal removed – logic is now in plan)
- */
-
