@@ -65,10 +65,82 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// GET /v1/worker/health
+app.get('/v1/worker/health', async (_req: Request, res: Response) => {
+  try {
+    const HEARTBEAT_KEY =
+      process.env.WORKER_HEARTBEAT_KEY || 'ifi:worker:heartbeat';
+    const thresholdMs = Number(
+      process.env.WORKER_HEALTH_THRESHOLD_MS || 15_000
+    );
+
+    // Fetch heartbeat payload
+    let heartbeatRaw: string | null = null;
+    try {
+      heartbeatRaw = await publisher.get(HEARTBEAT_KEY);
+    } catch (e) {
+      // Ignore – redisOk flag will capture failures
+    }
+
+    let heartbeat: {
+      ts: number;
+      startedAt: number;
+      uptimeMs: number;
+      pid?: number;
+    } | null = null;
+
+    if (heartbeatRaw) {
+      try {
+        heartbeat = JSON.parse(heartbeatRaw);
+      } catch {
+        heartbeat = null;
+      }
+    }
+
+    const now = Date.now();
+    const lastTs = heartbeat?.ts ?? null;
+    const healthy =
+      lastTs !== null && now - lastTs <= thresholdMs ? true : false;
+
+    // Best-effort Redis ping
+    let redisOk = false;
+    try {
+      redisOk = (await publisher.ping()) === 'PONG';
+    } catch {
+      redisOk = false;
+    }
+
+    // Best-effort DB check
+    let dbOk = false;
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      dbOk = true;
+    } catch {
+      dbOk = false;
+    }
+
+    return res.status(200).json({
+      healthy,
+      lastHeartbeatAt: lastTs ? new Date(lastTs).toISOString() : null,
+      uptimeSeconds: heartbeat?.uptimeMs
+        ? Math.floor(heartbeat.uptimeMs / 1000)
+        : null,
+      now: new Date(now).toISOString(),
+      thresholdMs,
+      redisOk,
+      dbOk,
+      pid: heartbeat?.pid ?? null,
+    });
+  } catch (err) {
+    console.error('GET /v1/worker/health error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // POST /v1/chat/messages
 app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   try {
-    const { threadId, input, repo } = req.body || {};
+    const { threadId, input } = req.body || {};
     const userId = req.headers['x-user-id'] as string;
 
     if (typeof input !== 'string' || !input.trim()) {
@@ -105,10 +177,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     const assistantContent = planRes.text;
     const mcpSuggestions = planRes.suggestions || { repos: [], prs: [] };
 
-    const repoCandidate =
-      !repo && mcpSuggestions.repos.length > 0
-        ? mcpSuggestions.repos[0].fullName
-        : repo;
+    const repoCandidate = mcpSuggestions.repos[0].fullName;
 
     // Save assistant message
     const assistantMessage = await addMessage({
@@ -134,7 +203,6 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       acceptanceCriteria: ['Code should work as described'],
       riskNotes: [],
       fileTargets: [],
-      // completenessScore removed – user decides when spec is ready
     };
 
     // Save draft spec
