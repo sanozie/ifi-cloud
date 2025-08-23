@@ -1,21 +1,38 @@
 FROM node:20-slim AS builder
 WORKDIR /app
+RUN corepack enable
 
-# Copy only the worker sources and tsconfig
-COPY services/worker/tsconfig.json ./services/worker/tsconfig.json
-COPY services/worker/src ./services/worker/src
+# Copy monorepo (enough for Yarn workspaces)
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY tsconfig.base.json ./
+COPY packages ./packages
+COPY services ./services
 
-# Compile TypeScript using a one-off Typescript install (no workspace deps)
-RUN npx -y typescript@5.5.4 tsc -p services/worker/tsconfig.json
+# Install deps
+RUN yarn install
 
-# ---- Runtime ----
+# Generate Prisma client and build workspaces
+RUN yarn workspace @ifi/db prisma generate
+RUN yarn workspace @ifi/shared build \
+    && yarn workspace @ifi/db build \
+    && yarn workspace @ifi/worker build
+
+# --- Runtime ---
 FROM node:20-slim
-WORKDIR /app/services/worker
+WORKDIR /app
 
-# Copy compiled output
-COPY --from=builder /app/services/worker/dist ./dist
+# Prisma requires OpenSSL at runtime in Debian-based images
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# Copy production artifacts and dependencies
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/services/worker/package.json ./services/worker/package.json
+COPY --from=builder /app/services/worker/dist ./services/worker/dist
 
 ENV NODE_ENV=production
 USER node
+WORKDIR /app/services/worker
 
+EXPOSE 3000
 CMD ["node", "dist/index.js"]
