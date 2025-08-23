@@ -71,9 +71,10 @@ export async function plan(
     web_search_preview: openai.tools.webSearchPreview({
       searchContextSize: 'high',
     }),
-  }
+  };
 
-  const result = await generateText({
+  // --- switched to streaming API ---
+  const result = await streamText({
     model: openai(mergedConfig.plannerModel),
     messages: [
       {
@@ -88,21 +89,16 @@ export async function plan(
     temperature: 0.2,
   });
 
-  // Extract suggestions from tool results (if any)
-  let suggestions: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  } = { repos: [], prs: [] };
-  const toolResultsAny = (result as any).toolResults as any[] | undefined;
-  if (toolResultsAny && toolResultsAny.length > 0) {
-    const r = toolResultsAny[0]?.result || {};
-    suggestions = {
-      repos: Array.isArray(r.repos) ? r.repos : [],
-      prs: Array.isArray(r.prs) ? r.prs : [],
-    };
+  // Aggregate streamed chunks into final text
+  let fullText = '';
+  for await (const chunk of result.textStream) {
+    fullText += chunk;
   }
 
-  return { text: result.text, suggestions };
+  return {
+    text: fullText,
+    suggestions: { repos: [], prs: [] },
+  };
 }
 
 /**
