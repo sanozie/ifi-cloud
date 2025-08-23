@@ -4,6 +4,7 @@ import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createFireworks } from '@ai-sdk/fireworks';
+import { experimental_createMCPClient } from 'ai';
 import { z } from 'zod';
 
 /**
@@ -187,53 +188,24 @@ async function getMcpToolsAsync(): Promise<any | undefined> {
   }
 
   /** ----------------------------------------------------------------
-   * Preferred path: use experimental_createMcpClient from AI SDK v5
+   * Preferred path: create client with experimental_createMcpClient
    * ----------------------------------------------------------------*/
   try {
-    // Dynamically import so build still works if sdk version mismatches
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const aiMod: any = await import('ai');
-    const createClient =
-      aiMod.experimental_createMcpClient ||
-      aiMod.experimental_createMCPClient ||
-      null;
-
-    if (createClient) {
-      const client = createClient({
+    const client = await experimental_createMCPClient({
+      // Minimal HTTP transport – works with Smithery/AI SDK
+      transport: {
+        type: 'http',
         url: base.replace(/\/$/, ''),
-        name: 'github',
-        headers: process.env.MCP_GITHUB_TOKEN
-          ? { Authorization: `Bearer ${process.env.MCP_GITHUB_TOKEN}` }
-          : undefined,
-      });
+      } as any,
+    } as any);
 
-      // listTools(): returns array of { name, description, schema? }
-      const remoteTools: any[] =
-        (client.listTools ? await client.listTools() : []) || [];
-
-      // Dynamically wrap every remote tool so Vercel AI SDK can call it
-      const toolset: Record<string, any> = {};
-      for (const t of remoteTools) {
-        const tName = t.name;
-        toolset[tName] = {
-          description: t.description ?? '',
-          // We don't have the per-tool schema → accept any.
-          inputSchema: z.any(),
-          execute: async (args: any) => {
-            if (client.callTool) {
-              return await client.callTool(tName, args);
-            }
-            if (client.invoke) {
-              return await client.invoke(tName, args);
-            }
-            throw new Error('MCP client has no callable executor');
-          },
-        };
-      }
-      return toolset as any;
-    }
+    // Return tools directly; AI SDK can consume them as-is
+    return (await client.tools()) as any;
   } catch (err) {
-    console.warn('experimental_createMcpClient not available – falling back to HTTP search only', err);
+    console.warn(
+      'experimental_createMcpClient failed – falling back to HTTP search tool',
+      err
+    );
   }
 
   /** ----------------------------------------------------------------
