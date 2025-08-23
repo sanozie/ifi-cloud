@@ -64,7 +64,14 @@ export async function plan(
   }
 
   // Load MCP tools if available
-  const tools = await getMcpToolsAsync();
+  const mcpTools = await getMcpToolsAsync();
+
+  const tools = {
+    ...mcpTools,
+    web_search_preview: openai.tools.webSearchPreview({
+      searchContextSize: 'high',
+    }),
+  }
 
   const result = await generateText({
     model: openai(mergedConfig.plannerModel),
@@ -72,7 +79,7 @@ export async function plan(
       {
         role: 'system',
         content:
-          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
       },
       { role: 'user', content: prompt },
     ],

@@ -19,8 +19,6 @@ import {
   JobStatus,
   MessageRole,
   ImplementationSpec,
-  ChatSSEEventPayload,
-  JobSSEEventPayload,
   Intent,
 } from '@ifi/shared';
 // Direct Prisma client (for ad-hoc queries in this file)
@@ -34,30 +32,11 @@ app.use(express.json());
 // Redis setup
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const publisher = new Redis(REDIS_URL);
-const getSubscriber = () => new Redis(REDIS_URL);
 
 // Helper to publish events to Redis
 function publish(channel: string, event: string, data: any) {
   const payload = JSON.stringify({ event, data });
   return publisher.publish(channel, payload);
-}
-
-// Helper to set up SSE response
-function setupSSE(req: Request, res: Response) {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Send initial comment to keep connection alive
-  res.write(':ok\n\n');
-
-  // Handle client disconnect
-  req.on('close', () => {
-    res.end();
-  });
-
-  return res;
 }
 
 // Health check (back-compat)
@@ -227,42 +206,6 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   }
 });
 
-// GET /v1/chat/threads/:threadId/stream (SSE)
-app.get('/v1/chat/threads/:threadId/stream', (req: Request, res: Response) => {
-  try {
-    const { threadId } = req.params;
-    if (!threadId) {
-      return res.status(400).json({ error: 'threadId is required' });
-    }
-
-    const sseRes = setupSSE(req, res);
-    const subscriber = getSubscriber();
-    const channel = `thread:${threadId}`;
-
-    subscriber.subscribe(channel);
-    subscriber.on('message', (chan, message) => {
-      if (chan !== channel) return;
-      
-      try {
-        const { event, data } = JSON.parse(message) as ChatSSEEventPayload;
-        sseRes.write(`event: ${event}\n`);
-        sseRes.write(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (e) {
-        console.error('Error parsing SSE message:', e);
-      }
-    });
-
-    // Clean up on close
-    req.on('close', () => {
-      subscriber.unsubscribe(channel);
-      subscriber.quit();
-    });
-  } catch (err) {
-    console.error('GET /v1/chat/threads/:threadId/stream error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
 // POST /v1/specs/:threadId/finalize
 app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
@@ -303,42 +246,6 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
   } catch (err) {
     console.error('POST /v1/specs/:threadId/finalize error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// GET /v1/jobs/:id/stream (SSE)
-app.get('/v1/jobs/:id/stream', (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ error: 'job id is required' });
-    }
-
-    const sseRes = setupSSE(req, res);
-    const subscriber = getSubscriber();
-    const channel = `job:${id}`;
-
-    subscriber.subscribe(channel);
-    subscriber.on('message', (chan, message) => {
-      if (chan !== channel) return;
-      
-      try {
-        const { event, data } = JSON.parse(message) as JobSSEEventPayload;
-        sseRes.write(`event: ${event}\n`);
-        sseRes.write(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (e) {
-        console.error('Error parsing SSE message:', e);
-      }
-    });
-
-    // Clean up on close
-    req.on('close', () => {
-      subscriber.unsubscribe(channel);
-      subscriber.quit();
-    });
-  } catch (err) {
-    console.error('GET /v1/jobs/:id/stream error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
