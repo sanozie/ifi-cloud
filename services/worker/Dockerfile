@@ -2,12 +2,16 @@ FROM node:20-slim AS builder
 WORKDIR /app
 RUN corepack enable
 
+# Install OpenSSL for Prisma
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 # Copy workspace manifests
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY tsconfig.base.json ./
 
 # Copy only needed packages and worker service
 COPY packages ./packages
+COPY services/db ./services/db
 COPY services/worker ./services/worker
 
 # Install deps (node-modules linker per .yarnrc.yml)
