@@ -241,7 +241,7 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
     }
 
     // Parse and validate spec
-    // Cast through `unknown` first to satisfy TypeScript’s structural checks
+    // Cast through `unknown` first to satisfy TypeScript's structural checks
     const spec = draftSpec.specJson as unknown as ImplementationSpec;
     if (spec.completenessScore < 0.9) {
       return res.status(400).json({ 
@@ -270,56 +270,6 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
     return res.status(200).json({ jobId: job.id });
   } catch (err) {
     console.error('POST /v1/specs/:threadId/finalize error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// POST /v1/codegen/jobs
-app.post('/v1/codegen/jobs', async (req: Request, res: Response) => {
-  try {
-    const { threadId, specId, repo, baseBranch, branchPolicy, dryRun } = req.body || {};
-    const userId = req.headers['x-user-id'] as string;
-
-    if (!threadId || !repo) {
-      return res.status(400).json({ error: 'threadId and repo are required' });
-    }
-
-    // For Iteration 1, dryRun must be false
-    if (dryRun !== false) {
-      return res.status(400).json({ error: 'dryRun must be false for Iteration 1' });
-    }
-
-    // Get spec if specId provided, otherwise use latest ready spec
-    let specToUse = specId;
-    if (!specId) {
-      const readySpec = await prisma.spec.findFirst({
-        where: { threadId, status: 'ready' },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!readySpec) {
-        return res.status(404).json({ error: 'No ready spec found for thread' });
-      }
-      specToUse = readySpec.id;
-    }
-
-    // Create job
-    const job = await createJob({
-      userId,
-      threadId,
-      specId: specToUse,
-      status: JobStatus.QUEUED,
-      repo,
-      baseBranch: baseBranch || 'main',
-      featureBranch: branchPolicy?.mode === 'existing' ? branchPolicy.name : undefined,
-    });
-
-    // Publish job queued event
-    publish(`job:${job.id}`, 'status', { phase: 'queued' });
-    publish(`job:${job.id}`, 'log', { at: 'queued', msg: 'Job created and queued for processing' });
-
-    return res.status(200).json({ jobId: job.id });
-  } catch (err) {
-    console.error('POST /v1/codegen/jobs error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
@@ -488,49 +438,6 @@ app.post('/v1/webhooks/github', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('POST /v1/webhooks/github error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// Legacy endpoint (back-compat)
-app.post('/api/chat', async (req: Request, res: Response) => {
-  try {
-    const { message, context } = req.body || {};
-
-    if (typeof message !== 'string' || !message.trim()) {
-      return res.status(400).json({ message: 'message is required' });
-    }
-
-    // Determine repo (optional context)
-    const repo = (context && typeof context.repo === 'string' && context.repo.trim())
-      ? context.repo
-      : 'sanozie/ifi';
-
-    // Create a queued job
-    const job = await createJob({
-      status: JobStatus.QUEUED,
-      repo,
-    });
-
-    // Minimal response expected by client
-    return res.status(200).json({ jobId: job.id, reply: null });
-  } catch (err) {
-    console.error('POST /api/chat error:', err);
-    return res.status(500).json({ message: 'Internal Server Error' });
-  }
-});
-
-// Legacy endpoint (back-compat)
-app.get('/api/jobs/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const job = await getJob(id);
-    if (!job) {
-      return res.status(404).json({ message: 'Job not found' });
-    }
-    return res.status(200).json(job);
-  } catch (err) {
-    console.error('GET /api/jobs/:id error:', err);
-    return res.status(500).json({ message: 'Internal Server Error' });
   }
 });
 
