@@ -41,29 +41,9 @@ const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const fireworks = createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
 
 /**
- * Generate a plan using OpenAI
- * @param prompt User prompt to generate a plan for
- * @param config Optional provider configuration
- * @returns A string containing the generated plan
- */
-export async function plan(
-  prompt: string,
-  config: Partial<ProviderConfig> = {}
-) : Promise<{ text: string }> {
-  // call streaming helper and aggregate
-  const stream = await planStream(prompt, config);
-
-  let full = '';
-  for await (const chunk of stream.textStream) {
-    full += chunk;
-  }
-  return { text: full };
-}
-
-/**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
  */
-export async function planStream(
+export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
 ): Promise<ReturnType<typeof streamText>> {
@@ -185,7 +165,6 @@ export async function codegen(
  */
 export const providers = {
   plan,
-  planStream,
   codegen,
   draftSpecFromMessages,
 };

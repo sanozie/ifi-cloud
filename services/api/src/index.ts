@@ -14,7 +14,7 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { planStream, draftSpecFromMessages } from '@ifi/providers';
+import { plan, draftSpecFromMessages } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
@@ -152,7 +152,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    const stream = await planStream(input, {
+    const stream = await plan(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
 
@@ -176,13 +176,13 @@ app.post('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
-    const messagesOrdered = thread.messages.map((m) => ({
+    const messages = thread.messages.map((m) => ({
         role: m.role as MessageRole,
         content: m.content,
       }));
 
     // Build draft spec via provider
-    const content = await draftSpecFromMessages(messagesOrdered);
+    const content = await draftSpecFromMessages(messages);
 
     // Determine title
     let title = 'Draft Spec';
@@ -229,13 +229,11 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
     }
 
     // Get latest draft spec
-    const draftSpec = await getLatestDraftSpec(threadId);
-    if (!draftSpec) {
+    const finalizedSpec = await getLatestDraftSpec(threadId);
+    if (!finalizedSpec) {
+      console.error(`[api] No draft spec found for thread ${threadId}`);
       return res.status(404).json({ error: 'No draft spec found' });
     }
-
-    // Finalize spec (mark as ready)
-    const finalizedSpec = await finalizeSpec(threadId);
 
     // Create a job
     const job = await createJob({
