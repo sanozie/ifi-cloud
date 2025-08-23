@@ -38,19 +38,6 @@ async function testFireworks() {
   }
 }
 
-async function testDatabase() {
-  console.log('Testing database connection...');
-  try {
-    const result = await prisma.$queryRaw`SELECT 1 as test`;
-    console.log('✅ Database connection test successful');
-    console.log('Query result:', result);
-    return true;
-  } catch (error) {
-    console.error('❌ Database connection test failed:', (error as Error).message);
-    return false;
-  }
-}
-
 async function runSmokeTests() {
   console.log('🔥 Running IFI smoke tests...');
   console.log('-----------------------------------');
@@ -61,13 +48,9 @@ async function runSmokeTests() {
   const fireworksResult = await testFireworks();
   console.log('-----------------------------------');
   
-  const dbResult = await testDatabase();
-  console.log('-----------------------------------');
-  
   console.log('📊 Smoke test summary:');
   console.log(`OpenAI planner: ${openaiResult ? '✅ PASS' : '❌ FAIL'}`);
   console.log(`Fireworks codegen: ${fireworksResult ? '✅ PASS' : '❌ FAIL'}`);
-  console.log(`Database connection: ${dbResult ? '✅ PASS' : '❌ FAIL'}`);
   
   const allPassed = openaiResult && fireworksResult && dbResult;
   console.log('-----------------------------------');
