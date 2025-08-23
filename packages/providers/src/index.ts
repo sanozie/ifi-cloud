@@ -49,7 +49,24 @@ const fireworks = createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
 export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
-)  {
+) : Promise<{ text: string }> {
+  // call streaming helper and aggregate
+  const stream = await planStream(prompt, config);
+
+  let full = '';
+  for await (const chunk of stream.textStream) {
+    full += chunk;
+  }
+  return { text: full };
+}
+
+/**
+ * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
+ */
+export async function planStream(
+  prompt: string,
+  config: Partial<ProviderConfig> = {}
+): Promise<ReturnType<typeof streamText>> {
   const mergedConfig = { ...defaultConfig, ...config };
 
   // Load MCP tools if available
@@ -61,20 +78,74 @@ export async function plan(
     }),
   };
 
-  // Use streaming API and aggregate results
+  // When no OpenAI key: return stub stream
+  if (!process.env.OPENAI_API_KEY) {
+    const stub = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test\n5. Iterate`;
+    const rs = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(stub));
+        c.close();
+      },
+    });
+    // @ts-ignore – minimal object contract for callers
+    return { textStream: rs };
+  }
+
+  // Delegate
   return streamText({
     model: openai(mergedConfig.plannerModel),
     messages: [
       {
         role: 'system',
-        content: 'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
+        content:
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
       },
-      {role: 'user', content: prompt},
+      { role: 'user', content: prompt },
     ],
     tools,
     maxOutputTokens: mergedConfig.maxTokens,
     temperature: 0.2,
   });
+}
+
+/**
+ * Build a Markdown design spec from a conversation transcript.
+ */
+export async function draftSpecFromMessages(
+  messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
+  config: Partial<ProviderConfig> = {}
+): Promise<string> {
+  const mergedConfig = { ...defaultConfig, ...config };
+
+  // Stub when no model available
+  if (!process.env.OPENAI_API_KEY) {
+    const combined = messages
+      .map((m) => `- **${m.role}**: ${m.content}`)
+      .join('\n');
+    return `# Draft Spec (stub)\n\nConversation summary:\n${combined}`;
+  }
+
+  const transcript = messages
+    .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+    .join('\n');
+
+  const prompt = `You are a senior software engineer producing a concise internal design specification in Markdown format.
+The following is the full planning conversation between the user and assistant delimited by triple backticks.
+\`\`\`
+${transcript}
+\`\`\`
+
+Write a clear, well-structured design spec that includes a title, overview, requirements, proposed solution, next steps and acceptance criteria.
+Respond ONLY with Markdown.`;
+
+  const { text } = await generateText({
+    model: openai(mergedConfig.plannerModel),
+    prompt,
+    maxOutputTokens: mergedConfig.maxTokens,
+    temperature: 0.3,
+  });
+
+  return text;
 }
 
 /**
@@ -114,7 +185,9 @@ export async function codegen(
  */
 export const providers = {
   plan,
+  planStream,
   codegen,
+  draftSpecFromMessages,
 };
 
 export default providers;

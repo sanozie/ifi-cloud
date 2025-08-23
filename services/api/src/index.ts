@@ -14,7 +14,7 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { plan } from '@ifi/providers';
+import { planStream, draftSpecFromMessages } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
@@ -152,7 +152,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    const stream = await plan(input, {
+    const stream = await planStream(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
 
@@ -165,10 +165,68 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   }
 });
 
+// POST /v1/specs/:threadId/draft
+app.post('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
+  try {
+    const { threadId } = req.params;
+
+    // Load thread with messages (already ordered asc)
+    const thread = await getThread(threadId);
+    if (!thread) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    const messagesOrdered = thread.messages.map((m) => ({
+        role: m.role as MessageRole,
+        content: m.content,
+      }));
+
+    // Build draft spec via provider
+    const content = await draftSpecFromMessages(messagesOrdered);
+
+    // Determine title
+    let title = 'Draft Spec';
+    const firstLine = content.split('\n')[0] ?? '';
+    if (firstLine.startsWith('#')) {
+      title = firstLine.replace(/^#+\s*/, '').trim();
+    } else if (thread.title) {
+      title = `Draft Spec for ${thread.title}`;
+    }
+
+    const spec = await upsertDraftSpec(threadId, { title, content });
+
+    return res.status(200).json({
+      threadId,
+      spec: {
+        id: spec.id,
+        title: spec.title,
+        content: spec.content,
+        version: spec.version,
+      },
+    });
+  } catch (err) {
+    console.error('POST /v1/specs/:threadId/draft error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // POST /v1/specs/:threadId/finalize
 app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
+    const {
+      confirm,
+      repo,
+      baseBranch = 'main',
+      featureBranch,
+    } = req.body || {};
+
+    if (!confirm) {
+      return res.status(400).json({ error: 'confirmation required' });
+    }
+    if (typeof repo !== 'string' || !repo.trim()) {
+      return res.status(400).json({ error: 'repo is required' });
+    }
 
     // Get latest draft spec
     const draftSpec = await getLatestDraftSpec(threadId);
