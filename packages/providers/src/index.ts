@@ -1,7 +1,7 @@
 import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 
 // Vercel AI SDK v5
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createFireworks } from '@ai-sdk/fireworks';
 import { experimental_createMCPClient } from 'ai';
@@ -29,50 +29,56 @@ export const defaultConfig: ProviderConfig = {
   costCapUsd: parseFloat(process.env.CODEGEN_COST_CAP_USD || '1.0'),
 };
 
-// Instantiate model providers (null when missing API key so we can fall back to stub)
-const openai = process.env.OPENAI_API_KEY
-  ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
+// Cache configuration for MCP tools
+const MCP_CACHE_TTL_MS = parseInt(process.env.MCP_TOOLS_CACHE_TTL_MS || '300000', 10);
+let mcpToolsCache: any | undefined;
+let mcpToolsCacheAt = 0;
+let mcpFetchInFlight: Promise<any> | null = null;
 
-const fireworks = process.env.FIREWORKS_API_KEY
-  ? createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
-  : null;
+// Instantiate model providers (null when missing API key so we can fall back to stub)
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+const fireworks = createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
 
 /**
- * Generate a plan using OpenAI
- * @param prompt User prompt to generate a plan for
- * @param config Optional provider configuration
- * @returns A string containing the generated plan
+ * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
  */
 export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
-): Promise<{
-  text: string;
-  suggestions?: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  };
-}> {
+): Promise<ReturnType<typeof streamText>> {
   const mergedConfig = { ...defaultConfig, ...config };
 
-  // If OpenAI not configured, return stub response
-  if (!openai) {
-    console.warn('OpenAI API key not set, returning stub plan');
-    const text = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test the implementation\n5. Refine based on feedback`;
-    return { text, suggestions: { repos: [], prs: [] } };
+  // Load MCP tools if available
+  const mcpTools = await getMcpTools();
+  const tools = {
+    ...mcpTools,
+    web_search_preview: openai.tools.webSearchPreview({
+      searchContextSize: 'high',
+    }),
+  };
+
+  // When no OpenAI key: return stub stream
+  if (!process.env.OPENAI_API_KEY) {
+    const stub = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test\n5. Iterate`;
+    const rs = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(stub));
+        c.close();
+      },
+    });
+    // @ts-ignore – minimal object contract for callers
+    return { textStream: rs };
   }
 
-  // Load MCP tools if available
-  const tools = await getMcpToolsAsync();
-
-  const result = await generateText({
+  // Delegate
+  return streamText({
     model: openai(mergedConfig.plannerModel),
     messages: [
       {
         role: 'system',
         content:
-          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan.',
+          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
       },
       { role: 'user', content: prompt },
     ],
@@ -80,22 +86,46 @@ export async function plan(
     maxOutputTokens: mergedConfig.maxTokens,
     temperature: 0.2,
   });
+}
 
-  // Extract suggestions from tool results (if any)
-  let suggestions: {
-    repos: { fullName: string; score: number }[];
-    prs: { fullName: string; number: number; title: string; score: number }[];
-  } = { repos: [], prs: [] };
-  const toolResultsAny = (result as any).toolResults as any[] | undefined;
-  if (toolResultsAny && toolResultsAny.length > 0) {
-    const r = toolResultsAny[0]?.result || {};
-    suggestions = {
-      repos: Array.isArray(r.repos) ? r.repos : [],
-      prs: Array.isArray(r.prs) ? r.prs : [],
-    };
+/**
+ * Build a Markdown design spec from a conversation transcript.
+ */
+export async function draftSpecFromMessages(
+  messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
+  config: Partial<ProviderConfig> = {}
+): Promise<string> {
+  const mergedConfig = { ...defaultConfig, ...config };
+
+  // Stub when no model available
+  if (!process.env.OPENAI_API_KEY) {
+    const combined = messages
+      .map((m) => `- **${m.role}**: ${m.content}`)
+      .join('\n');
+    return `# Draft Spec (stub)\n\nConversation summary:\n${combined}`;
   }
 
-  return { text: result.text, suggestions };
+  const transcript = messages
+    .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+    .join('\n');
+
+  const prompt = `You are a senior software engineer producing a concise internal design specification in Markdown format.
+The following is the full planning conversation between the user and assistant delimited by triple backticks.
+\`\`\`
+${transcript}
+\`\`\`
+
+Write a clear, well-structured design spec that includes a title, overview, requirements, proposed solution, next steps and acceptance criteria.
+Respond ONLY with Markdown.`;
+
+  const { text } = await generateText({
+    model: openai(mergedConfig.plannerModel),
+    prompt,
+    maxOutputTokens: mergedConfig.maxTokens,
+    temperature: 0.3,
+  });
+
+  return text;
 }
 
 /**
@@ -136,6 +166,7 @@ export async function codegen(
 export const providers = {
   plan,
   codegen,
+  draftSpecFromMessages,
 };
 
 export default providers;
@@ -143,66 +174,61 @@ export default providers;
 /**
  * Build ToolSet that proxies to GitHub MCP server.
  */
-async function getMcpToolsAsync(): Promise<any | undefined> {
+async function getMcpTools(): Promise<any | undefined> {
   const base = process.env.MCP_GITHUB_URL;
   if (!base) {
     // no MCP configured – caller should treat as undefined
     return undefined;
   }
 
-  /** ----------------------------------------------------------------
-   * Preferred path: create client with experimental_createMcpClient
-   * ----------------------------------------------------------------*/
-  try {
-    const client = await experimental_createMCPClient({
-      // Minimal HTTP transport – works with Smithery/AI SDK
-      transport: {
-        type: 'http',
-        url: base.replace(/\/$/, ''),
-      } as any,
-    } as any);
-
-    // Return tools directly; AI SDK can consume them as-is
-    return (await client.tools()) as any;
-  } catch (err) {
-    console.warn(
-      'experimental_createMcpClient failed – falling back to HTTP search tool',
-      err
-    );
+  // Check if cache is valid
+  if (Date.now() - mcpToolsCacheAt < MCP_CACHE_TTL_MS && mcpToolsCache !== undefined) {
+    return mcpToolsCache;
   }
 
-  /** ----------------------------------------------------------------
-   * Fallback: only expose the basic search tool via HTTP gateway
-   * ----------------------------------------------------------------*/
-  const endpoint = base.replace(/\/$/, '');
-  return {
-    search: {
-      description:
-        'Search GitHub repositories and pull requests relevant to the query',
-      inputSchema: z.object({ query: z.string() }),
-      execute: async ({ query }: { query: string }) => {
-        try {
-          const res = await fetch(`${endpoint}/search`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query }),
-          });
-          if (!res.ok) {
-            console.warn(`MCP server returned status ${res.status}`);
-            return { repos: [], prs: [] };
-          }
-          return (await res.json()) ?? { repos: [], prs: [] };
-        } catch (err) {
-          console.error('Error contacting MCP server:', err);
-          return { repos: [], prs: [] };
-        }
-      },
-    },
-  } as const;
+  // If there's already a fetch in progress, wait for it
+  if (mcpFetchInFlight) {
+    await mcpFetchInFlight;
+    return mcpToolsCache;
+  }
+
+  // Start a new fetch
+  mcpFetchInFlight = (async () => {
+    try {
+      /** ----------------------------------------------------------------
+       * Preferred path: create client with experimental_createMcpClient
+       * ----------------------------------------------------------------*/
+      try {
+        const client = await experimental_createMCPClient({
+          // Minimal HTTP transport – works with Smithery/AI SDK
+          transport: {
+            type: 'http',
+            url: base.replace(/\/$/, ''),
+          } as any,
+        } as any);
+
+        // Cache the tools
+        mcpToolsCache = await client.tools();
+        mcpToolsCacheAt = Date.now();
+        return mcpToolsCache;
+      } catch (err) {
+        console.warn(
+          'experimental_createMcpClient failed – falling back to HTTP search tool',
+          err
+        );
+      }
+    } catch (error) {
+      // On failure, set cache to undefined but update timestamp for backoff
+      mcpToolsCache = undefined;
+      mcpToolsCacheAt = Date.now();
+      console.error('Failed to fetch MCP tools:', error);
+      return undefined;
+    } finally {
+      mcpFetchInFlight = null;
+    }
+  })();
+
+  // Wait for the fetch to complete and return the result
+  await mcpFetchInFlight;
+  return mcpToolsCache;
 }
-
-
-/**
- * (planInternal removed – logic is now in plan)
- */
-

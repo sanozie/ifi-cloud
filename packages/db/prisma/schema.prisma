@@ -58,8 +58,8 @@ model Spec {
   id        String   @id @default(cuid())
   threadId  String
   version   Int      @default(1)
-  specJson  Json
-  status    String   @default("drafting") // drafting | ready | sent
+  title     String
+  content   String   @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -68,7 +68,6 @@ model Spec {
   jobs      Job[]
 
   @@index([threadId])
-  @@index([status])
 }
 
 model Job {

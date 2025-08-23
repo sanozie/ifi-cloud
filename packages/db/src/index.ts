@@ -183,48 +183,42 @@ export async function upsertUserByClerk(clerkId: string, email?: string) {
  */
 export function getLatestDraftSpec(threadId: string) {
   return prisma.spec.findFirst({
-    where: { threadId, status: 'drafting' },
+    where: { threadId },
     orderBy: { createdAt: 'desc' },
   });
 }
 
-export async function upsertDraftSpec(threadId: string, specJson: any) {
+export async function upsertDraftSpec(
+  threadId: string,
+  draft: { title: string; content: string }
+) {
   const existing = await getLatestDraftSpec(threadId);
   if (existing) {
     return prisma.spec.update({
       where: { id: existing.id },
-      data: { specJson: specJson as Prisma.InputJsonValue },
+      data: {
+        title: draft.title,
+        content: draft.content,
+      },
     });
   }
   return prisma.spec.create({
     data: {
       threadId,
-      specJson: specJson as Prisma.InputJsonValue,
-      status: 'drafting',
+      title: draft.title,
+      content: draft.content,
       version: 1,
     },
   });
 }
 
 export async function finalizeSpec(threadId: string) {
-  const drafting = await getLatestDraftSpec(threadId);
-  if (!drafting) {
-    throw new Error('No drafting spec found to finalize');
+  const latest = await getLatestDraftSpec(threadId);
+  if (!latest) {
+    throw new Error('No spec found to finalize');
   }
-  // mark current as sent
-  await prisma.spec.update({
-    where: { id: drafting.id },
-    data: { status: 'sent' },
-  });
-  // create ready snapshot with incremented version
-  return prisma.spec.create({
-    data: {
-      threadId,
-      version: drafting.version + 1,
-      specJson: drafting.specJson as Prisma.InputJsonValue,
-      status: 'ready',
-    },
-  });
+  // As of Iteration-2 we no longer track status – simply return the latest spec.
+  return latest;
 }
 
 /**

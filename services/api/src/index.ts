@@ -14,15 +14,13 @@ import {
   upsertDeviceToken,
   upsertUserByClerk,
 } from '@ifi/db';
-import { providers, plan } from '@ifi/providers';
+import { plan, draftSpecFromMessages } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
-  ImplementationSpec,
-  ChatSSEEventPayload,
-  JobSSEEventPayload,
   Intent,
 } from '@ifi/shared';
+import { Readable } from 'stream';
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
 
@@ -34,30 +32,11 @@ app.use(express.json());
 // Redis setup
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const publisher = new Redis(REDIS_URL);
-const getSubscriber = () => new Redis(REDIS_URL);
 
 // Helper to publish events to Redis
 function publish(channel: string, event: string, data: any) {
   const payload = JSON.stringify({ event, data });
   return publisher.publish(channel, payload);
-}
-
-// Helper to set up SSE response
-function setupSSE(req: Request, res: Response) {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Send initial comment to keep connection alive
-  res.write(':ok\n\n');
-
-  // Handle client disconnect
-  req.on('close', () => {
-    res.end();
-  });
-
-  return res;
 }
 
 // Health check (back-compat)
@@ -143,6 +122,12 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     const { threadId, input } = req.body || {};
     const userId = req.headers['x-user-id'] as string;
 
+    // If caller sets ?stream=1 or x-stream-ui=1 header → stream mode
+    const streamMode =
+      req.query.stream === '1' ||
+      req.headers['x-stream-ui'] === '1' ||
+      false;
+
     if (typeof input !== 'string' || !input.trim()) {
       return res.status(400).json({ error: 'input is required' });
     }
@@ -161,105 +146,67 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     }
 
     // Save user message
-    const userMessage = await addMessage({
+    await addMessage({
       threadId: thread.id,
       role: 'user',
       content: input,
     });
 
-    // Publish status update
-    publish(`thread:${thread.id}`, 'status', { state: 'thinking' });
-
-    // Call planner with Vercel-AI tools (includes MCP GitHub suggestions)
-    const planRes = await plan(input, {
+    const stream = await plan(input, {
       plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
     });
-    const assistantContent = planRes.text;
-    const mcpSuggestions = planRes.suggestions || { repos: [], prs: [] };
 
-    const repoCandidate = mcpSuggestions.repos[0].fullName;
+    // UIMessageStreamResponse from AI SDK
+    return stream.toUIMessageStreamResponse();
 
-    // Save assistant message
-    const assistantMessage = await addMessage({
-      threadId: thread.id,
-      role: 'assistant',
-      content: assistantContent,
-      provider: 'openai',
-      // In a real implementation, we'd track tokens and cost
-      tokensPrompt: input.length / 4, // Crude approximation
-      tokensCompletion: assistantContent.length / 4,
-      costUsd: 0.01, // Placeholder
-    });
-
-    // Derive a naive spec from input and repo
-    let spec: Partial<ImplementationSpec> = {
-      goal: input,
-      repo: repoCandidate || 'sanozie/ifi',
-      baseBranch: 'main',
-      branchPolicy: { mode: 'new_branch' },
-      featureName: `feature-${Date.now()}`,
-      deliverables: [{ type: 'code', desc: input }],
-      constraints: [],
-      acceptanceCriteria: ['Code should work as described'],
-      riskNotes: [],
-      fileTargets: [],
-    };
-
-    // Save draft spec
-    await upsertDraftSpec(thread.id, spec);
-
-    // Publish events
-    publish(`thread:${thread.id}`, 'status', { state: 'idle' });
-    publish(`thread:${thread.id}`, 'assistant_message', { id: assistantMessage.id, content: assistantMessage.content });
-    // Publish MCP context suggestions
-    publish(`thread:${thread.id}`, 'assistant_context', {
-      repos: mcpSuggestions.repos,
-      prs: mcpSuggestions.prs,
-    });
-
-    return res.status(200).json({ 
-      threadId: thread.id, 
-      messageId: assistantMessage.id 
-    });
   } catch (err) {
     console.error('POST /v1/chat/messages error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// GET /v1/chat/threads/:threadId/stream (SSE)
-app.get('/v1/chat/threads/:threadId/stream', (req: Request, res: Response) => {
+// POST /v1/specs/:threadId/draft
+app.post('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
-    if (!threadId) {
-      return res.status(400).json({ error: 'threadId is required' });
+
+    // Load thread with messages (already ordered asc)
+    const thread = await getThread(threadId);
+    if (!thread) {
+      return res.status(404).json({ error: 'Thread not found' });
     }
 
-    const sseRes = setupSSE(req, res);
-    const subscriber = getSubscriber();
-    const channel = `thread:${threadId}`;
+    const messages = thread.messages.map((m) => ({
+        role: m.role as MessageRole,
+        content: m.content,
+      }));
 
-    subscriber.subscribe(channel);
-    subscriber.on('message', (chan, message) => {
-      if (chan !== channel) return;
-      
-      try {
-        const { event, data } = JSON.parse(message) as ChatSSEEventPayload;
-        sseRes.write(`event: ${event}\n`);
-        sseRes.write(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (e) {
-        console.error('Error parsing SSE message:', e);
-      }
-    });
+    // Build draft spec via provider
+    const content = await draftSpecFromMessages(messages);
 
-    // Clean up on close
-    req.on('close', () => {
-      subscriber.unsubscribe(channel);
-      subscriber.quit();
+    // Determine title
+    let title = 'Draft Spec';
+    const firstLine = content.split('\n')[0] ?? '';
+    if (firstLine.startsWith('#')) {
+      title = firstLine.replace(/^#+\s*/, '').trim();
+    } else if (thread.title) {
+      title = `Draft Spec for ${thread.title}`;
+    }
+
+    const spec = await upsertDraftSpec(threadId, { title, content });
+
+    return res.status(200).json({
+      threadId,
+      spec: {
+        id: spec.id,
+        title: spec.title,
+        content: spec.content,
+        version: spec.version,
+      },
     });
   } catch (err) {
-    console.error('GET /v1/chat/threads/:threadId/stream error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error('POST /v1/specs/:threadId/draft error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
@@ -267,78 +214,41 @@ app.get('/v1/chat/threads/:threadId/stream', (req: Request, res: Response) => {
 app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
-    const { confirm } = req.body || {};
-    
+    const {
+      confirm,
+      repo,
+      baseBranch = 'main',
+      featureBranch,
+    } = req.body || {};
+
     if (!confirm) {
       return res.status(400).json({ error: 'confirmation required' });
     }
-
-    // Get latest draft spec
-    const draftSpec = await getLatestDraftSpec(threadId);
-    if (!draftSpec) {
-      return res.status(404).json({ error: 'No draft spec found' });
+    if (typeof repo !== 'string' || !repo.trim()) {
+      return res.status(400).json({ error: 'repo is required' });
     }
 
-    // Parse and validate spec
-    // Cast through `unknown` first to satisfy TypeScript's structural checks
-    const spec = draftSpec.specJson as unknown as ImplementationSpec;
-
-    // Finalize spec (mark as ready)
-    const finalizedSpec = await finalizeSpec(threadId);
+    // Get latest draft spec
+    const finalizedSpec = await getLatestDraftSpec(threadId);
+    if (!finalizedSpec) {
+      console.error(`[api] No draft spec found for thread ${threadId}`);
+      return res.status(404).json({ error: 'No draft spec found' });
+    }
 
     // Create a job
     const job = await createJob({
       threadId,
       specId: finalizedSpec.id,
       status: JobStatus.QUEUED,
-      repo: spec.repo,
-      baseBranch: spec.baseBranch,
-      featureBranch: spec.branchPolicy.mode === 'existing' ? spec.branchPolicy.name : undefined,
+      repo,
+      baseBranch,
+      featureBranch,
     });
-
-    // Publish job queued event
-    publish(`job:${job.id}`, 'status', { phase: 'queued' });
 
     return res.status(200).json({ jobId: job.id });
   } catch (err) {
     console.error('POST /v1/specs/:threadId/finalize error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// GET /v1/jobs/:id/stream (SSE)
-app.get('/v1/jobs/:id/stream', (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ error: 'job id is required' });
-    }
-
-    const sseRes = setupSSE(req, res);
-    const subscriber = getSubscriber();
-    const channel = `job:${id}`;
-
-    subscriber.subscribe(channel);
-    subscriber.on('message', (chan, message) => {
-      if (chan !== channel) return;
-      
-      try {
-        const { event, data } = JSON.parse(message) as JobSSEEventPayload;
-        sseRes.write(`event: ${event}\n`);
-        sseRes.write(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (e) {
-        console.error('Error parsing SSE message:', e);
-      }
-    });
-
-    // Clean up on close
-    req.on('close', () => {
-      subscriber.unsubscribe(channel);
-      subscriber.quit();
-    });
-  } catch (err) {
-    console.error('GET /v1/jobs/:id/stream error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
