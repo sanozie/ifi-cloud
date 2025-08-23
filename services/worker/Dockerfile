@@ -35,4 +35,4 @@ USER node
 WORKDIR /app/services/worker
 
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/services/worker/src/index.js"]
