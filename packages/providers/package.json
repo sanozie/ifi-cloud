@@ -14,7 +14,6 @@
     "@ai-sdk/openai": "^2.0.19",
     "ai": "^5.0.22",
     "openai": "^4.56.0",
-    "@ifi/integrations": "workspace:*",
     "zod": "^4.0.17"
   },
   "devDependencies": {
