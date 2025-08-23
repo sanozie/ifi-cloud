@@ -59,6 +59,8 @@ RUN test -f /app/packages/providers/dist/index.js \
  && test -e /app/node_modules/@ifi/db/package.json
 
 ENV NODE_ENV=production
+RUN chown -R node:node /app
+
 USER node
 WORKDIR /app/services/worker
 
