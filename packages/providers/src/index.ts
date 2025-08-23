@@ -5,7 +5,6 @@ import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createFireworks } from '@ai-sdk/fireworks';
 import { z } from 'zod';
-import { suggestRepoAndPR } from '@ifi/integrations';
 
 /**
  * Provider configuration
@@ -135,16 +134,9 @@ export async function planWithTools(
     return { text };
   }
 
-  // Define tool schema & executor
-  const tools = {
-    suggestReposAndPRs: {
-      description: 'Suggest relevant GitHub repositories and pull requests',
-      inputSchema: z.object({ query: z.string() }),
-      execute: async ({ query }: { query: string }) => {
-        return await suggestRepoAndPR(query);
-      },
-    },
-  } as const;
+  // Determine if MCP is configured and obtain tools only when present
+  const hasMcp = Boolean(process.env.MCP_GITHUB_URL);
+  const tools = hasMcp ? getMcpTools() : undefined;
 
   try {
     const result = await generateText({
@@ -162,13 +154,18 @@ export async function planWithTools(
       temperature: 0.2,
     });
 
-    // extract first tool result if present
-    let suggestions;
+    // Extract tool result if present and normalise shape
+    let suggestions: {
+      repos: { fullName: string; score: number }[];
+      prs: { fullName: string; number: number; title: string; score: number }[];
+    } = { repos: [], prs: [] };
     const toolResultsAny = (result as any).toolResults as any[] | undefined;
     if (toolResultsAny && toolResultsAny.length > 0) {
-      suggestions = toolResultsAny[0]?.result as Awaited<
-        ReturnType<typeof suggestRepoAndPR>
-      >;
+      const r = toolResultsAny[0]?.result || {};
+      suggestions = {
+        repos: Array.isArray(r.repos) ? r.repos : [],
+        prs: Array.isArray(r.prs) ? r.prs : [],
+      };
     }
 
     return { text: result.text, suggestions };
@@ -177,6 +174,45 @@ export async function planWithTools(
     // propagate error upward
     throw error;
   }
+}
+
+
+/**
+ * Build ToolSet that proxies to GitHub MCP server.
+ */
+function getMcpTools() {
+  const base = process.env.MCP_GITHUB_URL;
+  if (!base) {
+    console.warn('MCP_GITHUB_URL not set – planning will proceed without MCP tools');
+    // Cast as any to satisfy ToolSet typing when tools are absent
+    return {} as any;
+  }
+
+  const endpoint = base.replace(/\/$/, '');
+
+  return {
+    search: {
+      description: 'Search GitHub repositories and pull requests relevant to the query',
+      inputSchema: z.object({ query: z.string() }),
+      execute: async ({ query }: { query: string }) => {
+        try {
+          const res = await fetch(`${endpoint}/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+          });
+          if (!res.ok) {
+            console.warn(`MCP server returned status ${res.status}`);
+            return { repos: [], prs: [] };
+          }
+          return (await res.json()) ?? { repos: [], prs: [] };
+        } catch (err) {
+          console.error('Error contacting MCP server:', err);
+          return { repos: [], prs: [] };
+        }
+      },
+    },
+  } as const;
 }
 
 
