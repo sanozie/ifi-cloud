@@ -14,6 +14,13 @@ RUN yarn install --immutable
 
 # Generate Prisma client, then build all workspaces topologically and focus
 RUN yarn workspace @ifi/db prisma generate
+# Explicitly compile critical workspaces to guarantee dist output
+RUN node_modules/.bin/tsc -p packages/shared/tsconfig.json \
+ && node_modules/.bin/tsc -p packages/providers/tsconfig.json \
+ && node_modules/.bin/tsc -p packages/db/tsconfig.json \
+ && ls -l packages/shared/dist/index.js \
+ && ls -l packages/providers/dist/index.js \
+ && ls -l packages/db/dist/db/src/index.js
 RUN yarn workspaces foreach -A --topological-dev -j 1 run build
 RUN yarn workspaces focus -A --production
 
