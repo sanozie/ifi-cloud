@@ -43,23 +43,10 @@ export async function plan(
   try {
     const mergedConfig = { ...defaultConfig, ...config };
 
-    const reportCompletionTool = tool({
-      name: 'reportCompletion',
-      description: 'Signal task completion with summary and optional numeric code.',
-      inputSchema: z.object({
-        summary: z.string(),
-        code: z.number().optional(),
-      }),
-      execute: async () => {
-        return { acknowledged: true };
-      },
-    });
-
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({
         searchContextSize: 'high',
       }),
-      reportCompletion: reportCompletionTool,
     };
 
     // System message that's always included
