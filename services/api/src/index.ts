@@ -9,18 +9,14 @@ import {
   updateJob,
   getLatestDraftSpec,
   upsertDraftSpec,
-  finalizeSpec,
   createPullRequestRow,
   upsertDeviceToken,
-  upsertUserByClerk,
 } from '@ifi/db';
 import { plan, draftSpecFromMessages } from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
-  Intent,
 } from '@ifi/shared';
-import { Readable } from 'stream';
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
 
@@ -152,7 +148,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('POST /v1/chat/messages error:', err);
     return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
   }

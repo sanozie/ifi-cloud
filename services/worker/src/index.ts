@@ -1,11 +1,10 @@
 import Redis from 'ioredis';
 import {
   prisma,
-  getJob,
   updateJob,
   createPullRequestRow,
 } from '@ifi/db';
-import { providers } from '@ifi/providers';
+import { codegen } from '@ifi/providers';
 import { JobStatus } from '@ifi/shared';
 import {
   getOctokitForRepo,
@@ -104,7 +103,7 @@ async function processJob(job: any) {
     // Call providers.codegen to get patch text
     let patchContent = '';
     try {
-      patchContent = await providers.codegen(instruction);
+      patchContent = await codegen(instruction);
       publish(`job:${job.id}`, 'diff_chunk', { chunk: patchContent });
     } catch (error) {
       console.error(`[worker] Codegen error: ${error}`);

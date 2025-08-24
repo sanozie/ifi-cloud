@@ -5,7 +5,6 @@ import { generateText, streamText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createFireworks } from '@ai-sdk/fireworks';
 import { experimental_createMCPClient } from 'ai';
-import { z } from 'zod';
 
 /**
  * Provider configuration
@@ -71,14 +70,12 @@ export async function plan(
         { role: 'user', content: prompt },
       ],
       tools,
-      maxSteps: 100,
       temperature: 0.2,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error planning with OpenAI via Vercel AI SDK:', error);
     throw new Error(`Failed to plan: ${error.message}`);
   }
-
 }
 
 /**
@@ -152,17 +149,6 @@ export async function codegen(
     throw new Error(`Failed to generate code: ${(error as Error).message}`);
   }
 }
-
-/**
- * Provider router
- */
-export const providers = {
-  plan,
-  codegen,
-  draftSpecFromMessages,
-};
-
-export default providers;
 
 /**
  * Build ToolSet that proxies to GitHub MCP server.

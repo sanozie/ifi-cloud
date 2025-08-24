@@ -212,15 +212,6 @@ export async function upsertDraftSpec(
   });
 }
 
-export async function finalizeSpec(threadId: string) {
-  const latest = await getLatestDraftSpec(threadId);
-  if (!latest) {
-    throw new Error('No spec found to finalize');
-  }
-  // As of Iteration-2 we no longer track status – simply return the latest spec.
-  return latest;
-}
-
 /**
  * Pull Request row helper
  */
