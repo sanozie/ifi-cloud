@@ -43,41 +43,37 @@ export async function plan(
   try {
     const mergedConfig = { ...defaultConfig, ...config };
 
+    const reportCompletionTool = tool({
+      name: 'reportCompletion',
+      description: 'Signal task completion with summary and optional numeric code.',
+      inputSchema: z.object({
+        summary: z.string(),
+        code: z.number().optional(),
+      }),
+      execute: async () => {
+        return { acknowledged: true };
+      },
+    });
+
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({
         searchContextSize: 'high',
       }),
-      reportCompletion: tool({
-        name: 'reportCompletion',
-        description: 'Signal task completion with summary and optional numeric code.',
-        inputSchema: z.object({
-          summary: z.string(),
-          code: z.number().optional(), // single optional primitive is safe
-        }),
-        execute: async () => {
-          return { acknowledged: true };
-        },
-      }),
-    } as const;
+      reportCompletion: reportCompletionTool,
+    };
 
     // System message that's always included
-    const systemMessage = {
+    const systemMessage: ModelMessage = {
       role: 'system',
       content:
         'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
-    } as const;
+    };
 
     // Create message array with context from previous messages if provided
-    const messages = previousMessages
-      ? [
-          systemMessage,
-          ...previousMessages,
-          { role: 'user', content: prompt } as const
-        ] 
-      : [
-          systemMessage,
-          { role: 'user', content: prompt } as const
-        ];
+    const userMessage: ModelMessage = { role: 'user', content: prompt };
+    const messages: ModelMessage[] = previousMessages
+      ? [systemMessage, ...previousMessages, userMessage]
+      : [systemMessage, userMessage];
 
     // Delegate
     return streamText({
