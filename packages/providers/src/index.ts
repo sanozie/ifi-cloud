@@ -47,32 +47,38 @@ export async function plan(
   prompt: string,
   config: Partial<ProviderConfig> = {}
 ): Promise<ReturnType<typeof streamText>> {
-  const mergedConfig = { ...defaultConfig, ...config };
+  try {
+    const mergedConfig = { ...defaultConfig, ...config };
 
-  // Load MCP tools if available
-  const mcpTools = await getMcpTools();
-  const tools = {
-    ...mcpTools,
-    web_search_preview: openai.tools.webSearchPreview({
-      searchContextSize: 'high',
-    }),
-  };
+    // Load MCP tools if available
+    const mcpTools = await getMcpTools();
+    const tools = {
+      ...mcpTools,
+      web_search_preview: openai.tools.webSearchPreview({
+        searchContextSize: 'high',
+      }),
+    };
 
-  // Delegate
-  return streamText({
-    model: openai(mergedConfig.plannerModel),
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
-      },
-      { role: 'user', content: prompt },
-    ],
-    tools,
-    maxOutputTokens: mergedConfig.maxTokens,
-    temperature: 0.2,
-  });
+    // Delegate
+    return streamText({
+      model: openai(mergedConfig.plannerModel),
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      tools,
+      maxSteps: 100,
+      temperature: 0.2,
+    });
+  } catch (error) {
+    console.error('Error planning with OpenAI via Vercel AI SDK:', error);
+    throw new Error(`Failed to plan: ${error.message}`);
+  }
+
 }
 
 /**

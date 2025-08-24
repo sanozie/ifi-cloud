@@ -154,7 +154,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
   } catch (err) {
     console.error('POST /v1/chat/messages error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
   }
 });
 
