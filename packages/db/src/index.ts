@@ -16,8 +16,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 /**
  * Create a new thread
- * @param title Thread title
  * @returns The created thread
+ * @param params
  */
 export async function createThread(params: {
   title: string;
@@ -26,7 +26,6 @@ export async function createThread(params: {
   return prisma.thread.create({
     data: {
       title: params.title,
-      userId: params.userId,
     },
   });
 }
@@ -50,7 +49,7 @@ export async function addMessage(params: {
       threadId: params.threadId,
       role: params.role,
       content: params.content,
-      // Store metadata as JSON rather than stringifying
+      // Store metadata as JSON rather than stringify
       metadata: params.metadata as Prisma.InputJsonValue | undefined,
       provider: params.provider,
       tokensPrompt: params.tokensPrompt,
@@ -157,20 +156,6 @@ export async function updateJob(
 }
 
 /**
- * Upsert a user by Clerk ID
- */
-export async function upsertUserByClerk(clerkId: string, email?: string) {
-  return prisma.user.upsert({
-    where: { clerkId },
-    update: { email },
-    create: {
-      clerkId,
-      email,
-    },
-  });
-}
-
-/**
  * SPEC HELPERS
  */
 export function getLatestDraftSpec(threadId: string) {
@@ -230,11 +215,9 @@ export function upsertDeviceToken(params: {
   return prisma.deviceToken.upsert({
     where: { token: params.token },
     update: {
-      userId: params.userId,
       lastSeenAt: new Date(),
     },
     create: {
-      userId: params.userId,
       platform: params.platform,
       token: params.token,
       lastSeenAt: new Date(),
