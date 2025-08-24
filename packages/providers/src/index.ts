@@ -4,6 +4,7 @@ import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 import { generateText, streamText } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { experimental_createMCPClient } from 'ai';
+import { openai } from '@ai-sdk/openai'
 
 /**
  * Provider configuration
@@ -48,7 +49,12 @@ export async function plan(
 
     // Load MCP tools if available
     const mcpTools = await getMcpTools();
-    const tools = mcpTools;
+    const tools = {
+      ...mcpTools,
+      web_search_preview: openai.tools.webSearchPreview({
+        searchContextSize: 'high',
+      }),
+    };
 
     // Delegate
     return streamText({
