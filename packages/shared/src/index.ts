@@ -21,8 +21,8 @@ export interface ChatResponse {
 }
 
 // Default AI model constants
-export const DefaultPlannerModel = 'gpt-4-turbo';
-export const DefaultCodegenModel = 'accounts/fireworks/models/qwen2.5-coder-32b-instruct';
+export const DefaultPlannerModel = 'anthropic/claude-3.5-sonnet:beta'; // Claude Sonnet 4 via OpenRouter
+export const DefaultCodegenModel = 'anthropic/claude-3-5-opus:beta'; // Claude Opus 4.1 via OpenRouter
 
 // Iteration 1 planner default (alias kept for back-compat)
 export const PlannerModelV1 = 'gpt-5';
