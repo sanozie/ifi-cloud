@@ -27,6 +27,13 @@ export async function createThread(params: {
     data: {
       title: params.title,
     },
+    include: {
+      messages: {
+        orderBy: {
+          createdAt: 'asc',
+        },
+      },
+    }
   });
 }
 
@@ -226,3 +233,22 @@ export function upsertDeviceToken(params: {
 }
 
 export * from '@prisma/client';
+
+/**
+ * Convenience wrapper that returns a thread along with `modelMessages`
+ * already converted via the AI-SDK helper.
+ */
+export async function getThreadWithModelMessages(threadId: string) {
+  const thread = await getThread(threadId);
+  if (!thread) return null;
+
+  return {
+    ...thread,
+    modelMessages: thread.messages
+      .filter((m) => ['user', 'assistant', 'system'].includes(m.role))
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+      })),
+  };
+}
