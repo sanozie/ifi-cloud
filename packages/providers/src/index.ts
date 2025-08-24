@@ -1,11 +1,9 @@
 import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 
 // Vercel AI SDK v5
-import { generateText, streamText, experimental_createMCPClient, type ModelMessage, tool } from 'ai'
+import { generateText, streamText, type ModelMessage, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { openai } from '@ai-sdk/openai';
-
-import { addMessage } from '@ifi/db';
 import { z } from 'zod'
 
 /**
@@ -30,12 +28,6 @@ export const defaultConfig: ProviderConfig = {
   costCapUsd: parseFloat(process.env.CODEGEN_COST_CAP_USD || '1.0'),
 };
 
-// Cache configuration for MCP tools
-const MCP_CACHE_TTL_MS = parseInt(process.env.MCP_TOOLS_CACHE_TTL_MS || '300000', 10);
-let mcpToolsCache: any | undefined;
-let mcpToolsCacheAt = 0;
-let mcpFetchInFlight: Promise<any> | null = null;
-
 // Instantiate model providers (null when missing API key so we can fall back to stub)
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 
@@ -47,14 +39,11 @@ export async function plan(
   previousMessages?: ModelMessage[],
   onStepFinish?: (step: any) => void,
   config: Partial<ProviderConfig> = {}
-): Promise<ReturnType<typeof streamText>> {
+) {
   try {
     const mergedConfig = { ...defaultConfig, ...config };
 
-    // Load MCP tools if available
-    const { tools: mcpTools, client: mcpClient } = await getMcp(process.env.GITHUB_MCP_URL);
     const tools = {
-      ...mcpTools,
       web_search_preview: openai.tools.webSearchPreview({
         searchContextSize: 'high',
       }),
@@ -69,7 +58,7 @@ export async function plan(
           return { acknowledged: true };
         },
       }),
-    };
+    } as const;
 
     // System message that's always included
     const systemMessage = {
@@ -78,7 +67,7 @@ export async function plan(
         'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
     } as const;
 
-    // Create messages array with context from previous messages if provided
+    // Create message array with context from previous messages if provided
     const messages = previousMessages
       ? [
           systemMessage,
@@ -96,9 +85,6 @@ export async function plan(
       messages,
       tools,
       onStepFinish,
-      onFinish: async () => {
-        await mcpClient.close();
-      },
       stopWhen: (response: any) =>
         response.toolCalls?.some((call: any) => call.toolName === 'reportCompletion'),
       temperature: 0.2,
@@ -171,66 +157,4 @@ export async function codegen(
     console.error('Error generating code with OpenRouter via Vercel AI SDK:', error);
     throw new Error(`Failed to generate code: ${(error as Error).message}`);
   }
-}
-
-/**
- * Build ToolSet that proxies to GitHub MCP server.
- */
-async function getMcp(url: string | undefined): Promise<any | undefined> {
-  const base = url!
-  if (!base) {
-    // no MCP configured – caller should treat as undefined
-    return undefined;
-  }
-
-  // Check if cache is valid
-  if (Date.now() - mcpToolsCacheAt < MCP_CACHE_TTL_MS && mcpToolsCache !== undefined) {
-    return mcpToolsCache;
-  }
-
-  // If there's already a fetch in progress, wait for it
-  if (mcpFetchInFlight) {
-    await mcpFetchInFlight;
-    return mcpToolsCache;
-  }
-
-  // Start a new fetch
-  mcpFetchInFlight = (async () => {
-    try {
-      /** ----------------------------------------------------------------
-       * Preferred path: create client with experimental_createMcpClient
-       * ----------------------------------------------------------------*/
-      try {
-        const client = await experimental_createMCPClient({
-          // Minimal HTTP transport – works with Smithery/AI SDK
-          transport: {
-            type: 'http',
-            url: base.replace(/\/$/, ''),
-          } as any,
-        } as any);
-
-        // Cache the tools
-        mcpToolsCache = await client.tools();
-        mcpToolsCacheAt = Date.now();
-        return { tools: mcpToolsCache, client };
-      } catch (err) {
-        console.warn(
-          'experimental_createMcpClient failed – falling back to HTTP search tool',
-          err
-        );
-      }
-    } catch (error) {
-      // On failure, set cache to undefined but update timestamp for backoff
-      mcpToolsCache = undefined;
-      mcpToolsCacheAt = Date.now();
-      console.error('Failed to fetch MCP tools:', error);
-      return undefined;
-    } finally {
-      mcpFetchInFlight = null;
-    }
-  })();
-
-  // Wait for the fetch to complete and return the result
-  await mcpFetchInFlight;
-  return mcpToolsCache;
 }
