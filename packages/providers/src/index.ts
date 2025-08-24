@@ -43,30 +43,34 @@ export async function plan(
   try {
     const mergedConfig = { ...defaultConfig, ...config };
 
-    const reportCompletionTool = tool({
+    const mcptool: any = tool;
+
+    // Build the completion-reporting tool (runtime type is preserved,
+    // compile-time type is erased to `any`).
+    const reportCompletionTool = mcptool({
       name: 'reportCompletion',
-      description: 'Signal task completion with summary and optional numeric code.',
+      description:
+        'Call this exactly once when you have produced the final plan. The summary should be a concise, one-sentence description of what you accomplished.',
       inputSchema: z.object({
         summary: z.string(),
         code: z.number().optional(),
       }),
-      execute: async () => {
+      async execute() {
         return { acknowledged: true };
       },
-    });
+    }) as any;
 
+    // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
-      web_search_preview: openai.tools.webSearchPreview({
-        searchContextSize: 'high',
-      }),
-      reportCompletion: reportCompletionTool,
-    };
+      web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
+      reportCompletion: reportCompletionTool as any,
+    } as const;
 
     // System message that's always included
     const systemMessage: ModelMessage = {
       role: 'system',
       content:
-        'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
+        'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. When you have completed your work, CALL the reportCompletion tool exactly once with a short summary. Do NOT include any completion text directly in the user-visible response.',
     };
 
     // Create message array with context from previous messages if provided
@@ -82,7 +86,9 @@ export async function plan(
       tools,
       onStepFinish,
       stopWhen: (response: any) =>
-        response.toolCalls?.some((call: any) => call.toolName === 'reportCompletion'),
+        response.toolCalls?.some(
+          (call: { toolName?: string }) => call.toolName === 'reportCompletion',
+        ),
       temperature: 0.2,
     });
   } catch (error: any) {
