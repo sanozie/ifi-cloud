@@ -1,11 +1,12 @@
 import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 
 // Vercel AI SDK v5
-import { generateText, streamText, experimental_createMCPClient, type ModelMessage } from 'ai';
+import { generateText, streamText, experimental_createMCPClient, type ModelMessage, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { openai } from '@ai-sdk/openai';
 
 import { addMessage } from '@ifi/db';
+import { z } from 'zod'
 
 /**
  * Provider configuration
@@ -51,11 +52,22 @@ export async function plan(
     const mergedConfig = { ...defaultConfig, ...config };
 
     // Load MCP tools if available
-    const mcpTools = await getMcpTools();
+    const { tools: mcpTools, client: mcpClient } = await getMcp(process.env.GITHUB_MCP_URL);
     const tools = {
       ...mcpTools,
       web_search_preview: openai.tools.webSearchPreview({
         searchContextSize: 'high',
+      }),
+      reportCompletion: tool({
+        name: 'reportCompletion',
+        description: 'Signal task completion with summary and optional numeric code.',
+        inputSchema: z.object({
+          summary: z.string(),
+          code: z.number().optional(), // single optional primitive is safe
+        }),
+        execute: async () => {
+          return { acknowledged: true };
+        },
       }),
     };
 
@@ -89,7 +101,7 @@ export async function plan(
             await addMessage({
               threadId,
               role: 'assistant',
-              content: response.text,
+              content: response.text + '\n' + response.content,
               tokensPrompt: response.usage?.inputTokens,
               tokensCompletion: response.usage?.outputTokens,
               costUsd: response.usage?.totalTokens ? response.usage.totalTokens * 0.00001 : undefined, // Adjust cost calculation as needed
@@ -99,6 +111,11 @@ export async function plan(
           }
         }
       },
+      onFinish: async () => {
+        await mcpClient.close();
+      },
+      stopWhen: (response: any) =>
+        response.toolCalls?.some((call: any) => call.toolName === 'reportCompletion'),
       temperature: 0.2,
     });
   } catch (error: any) {
@@ -174,8 +191,8 @@ export async function codegen(
 /**
  * Build ToolSet that proxies to GitHub MCP server.
  */
-async function getMcpTools(): Promise<any | undefined> {
-  const base = process.env.MCP_GITHUB_URL;
+async function getMcp(url: string | undefined): Promise<any | undefined> {
+  const base = url!
   if (!base) {
     // no MCP configured – caller should treat as undefined
     return undefined;
@@ -210,7 +227,7 @@ async function getMcpTools(): Promise<any | undefined> {
         // Cache the tools
         mcpToolsCache = await client.tools();
         mcpToolsCacheAt = Date.now();
-        return mcpToolsCache;
+        return { tools: mcpToolsCache, client };
       } catch (err) {
         console.warn(
           'experimental_createMcpClient failed – falling back to HTTP search tool',
