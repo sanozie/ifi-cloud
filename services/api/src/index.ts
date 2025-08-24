@@ -203,20 +203,10 @@ app.post('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
 app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
-    const {
-      confirm,
-      repo,
-      baseBranch = 'main',
-      featureBranch,
-    } = req.body || {};
 
     if (!confirm) {
       return res.status(400).json({ error: 'confirmation required' });
     }
-    if (typeof repo !== 'string' || !repo.trim()) {
-      return res.status(400).json({ error: 'repo is required' });
-    }
-
     // Get latest draft spec
     const finalizedSpec = await getLatestDraftSpec(threadId);
     if (!finalizedSpec) {
@@ -229,9 +219,6 @@ app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => 
       threadId,
       specId: finalizedSpec.id,
       status: JobStatus.QUEUED,
-      repo,
-      baseBranch,
-      featureBranch,
     });
 
     return res.status(200).json({ jobId: job.id });

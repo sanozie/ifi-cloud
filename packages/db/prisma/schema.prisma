@@ -2,32 +2,32 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   // Explicit binary targets to ensure compatible engines on Render (OpenSSL 3.0)
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
+  binaryTargets   = ["native", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
   previewFeatures = ["postgresqlExtensions", "fullTextSearch", "fullTextIndex"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
   extensions = [pgvector(map: "vector")]
 }
 
 model Thread {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   title     String
   userId    String?
-  status    String    @default("active") // active | completed | abandoned
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  
+  status    String   @default("active") // active | completed | abandoned
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  messages  Message[]
+  messages   Message[]
   embeddings Embedding[]
-  specs     Spec[]
-  jobs      Job[]
-  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  specs      Spec[]
+  jobs       Job[]
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt(sort: Desc)])
   @@index([userId])
@@ -35,19 +35,19 @@ model Thread {
 }
 
 model Message {
-  id        String    @id @default(cuid())
-  threadId  String
-  role      String
-  content   String    @db.Text
-  createdAt DateTime  @default(now())
-  metadata  Json?
-  provider  String?
+  id               String   @id @default(cuid())
+  threadId         String
+  role             String
+  content          String   @db.Text
+  createdAt        DateTime @default(now())
+  metadata         Json?
+  provider         String?
   tokensPrompt     Int?
   tokensCompletion Int?
-  costUsd  Float?
-  
+  costUsd          Float?
+
   // Relations
-  thread    Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread     Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
   embeddings Embedding[]
 
   @@index([threadId])
@@ -64,63 +64,58 @@ model Spec {
   updatedAt DateTime @updatedAt
 
   // Relations
-  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  jobs      Job[]
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  jobs   Job[]
 
   @@index([threadId])
 }
 
 model Job {
-  id            String   @id @default(cuid())
-  userId        String?
-  threadId      String?
-  specId        String?
-  status        String
-  repo          String
-  baseBranch    String?  @default("main")
-  featureBranch String?
-  prUrl         String?
-  error         String?  @db.Text
-  costsJson     Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  threadId  String?
+  specId    String?
+  status    String
+  prUrl     String?
+  error     String?  @db.Text
+  costsJson Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user   User?   @relation(fields: [userId], references: [id])
-  thread Thread? @relation(fields: [threadId], references: [id])
-  spec   Spec?   @relation(fields: [specId], references: [id])
-  pullRequests PullRequest[]
+  user         User?       @relation(fields: [userId], references: [id])
+  thread       Thread?     @relation(fields: [threadId], references: [id])
+  spec         Spec?       @relation(fields: [specId], references: [id])
+  pullRequests PullRequest
 
   @@index([status])
   @@index([createdAt(sort: Desc)])
-  @@index([userId])
   @@index([threadId])
 }
 
 model Embedding {
-  id        String    @id @default(cuid())
+  id        String                      @id @default(cuid())
   threadId  String?
   messageId String?
   vector    Unsupported("vector(1536)")
-  createdAt DateTime  @default(now())
-  
+  createdAt DateTime                    @default(now())
+
   // Relations
-  thread    Thread?   @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  message   Message?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  thread  Thread?  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([threadId])
   @@index([messageId])
 }
 
 model User {
-  id       String   @id @default(cuid())
-  clerkId  String?  @unique
-  email    String?  @unique
+  id        String   @id @default(cuid())
+  clerkId   String?  @unique
+  email     String?  @unique
   createdAt DateTime @default(now())
 
   // Relations
-  threads  Thread[]
-  jobs     Job[]
+  threads      Thread[]
+  jobs         Job[]
   deviceTokens DeviceToken[]
 }
 
@@ -137,18 +132,18 @@ model PullRequest {
   updatedAt  DateTime @updatedAt
 
   // Relations
-  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
   @@index([status])
 }
 
 model DeviceToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  platform   String   @default("ios")
-  token      String   @unique
-  createdAt  DateTime @default(now())
+  platform   String    @default("ios")
+  token      String    @unique
+  createdAt  DateTime  @default(now())
   lastSeenAt DateTime?
 
   // Relations

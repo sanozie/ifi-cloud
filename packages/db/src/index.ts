@@ -66,23 +66,15 @@ export async function addMessage(params: {
  * @returns The created job
  */
 export async function createJob(params: {
-  userId?: string;
-  threadId?: string;
-  specId?: string;
+  threadId: string;
+  specId: string;
   status: string;
-  repo: string;
-  baseBranch?: string;
-  featureBranch?: string;
 }) {
   return prisma.job.create({
     data: {
-      userId: params.userId,
       threadId: params.threadId,
       specId: params.specId,
       status: params.status,
-      repo: params.repo,
-      baseBranch: params.baseBranch,
-      featureBranch: params.featureBranch,
     },
   });
 }

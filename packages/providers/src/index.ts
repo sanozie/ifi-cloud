@@ -87,14 +87,6 @@ export async function draftSpecFromMessages(
 ): Promise<string> {
   const mergedConfig = { ...defaultConfig, ...config };
 
-  // Stub when no model available
-  if (!process.env.OPENAI_API_KEY) {
-    const combined = messages
-      .map((m) => `- **${m.role}**: ${m.content}`)
-      .join('\n');
-    return `# Draft Spec (stub)\n\nConversation summary:\n${combined}`;
-  }
-
   const transcript = messages
     .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
     .join('\n');
