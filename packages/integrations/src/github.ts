@@ -174,12 +174,3 @@ export async function createPullRequest(params: {
     draft: params.draft ?? true,
   });
 }
-
-export const githubHelpers = {
-  createGitHubApp,
-  resolveInstallationId,
-  getOctokitForRepo,
-  ensureBranch,
-  createOrUpdateFile,
-  createPullRequest,
-};

@@ -252,7 +252,7 @@ async function tick() {
 function start() {
   console.log('[worker] starting');
   // write initial heartbeat immediately
-  updateHeartbeat();
+  updateHeartbeat().then(_ => {});
   timer = setInterval(async () => {
     await updateHeartbeat();
     await tick();

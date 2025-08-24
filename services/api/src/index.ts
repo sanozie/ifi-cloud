@@ -6,10 +6,8 @@ import {
   addMessage,
   getJob,
   createJob,
-  updateJob,
   getLatestDraftSpec,
   upsertDraftSpec,
-  createPullRequestRow,
   upsertDeviceToken,
 } from '@ifi/db';
 import { plan, draftSpecFromMessages } from '@ifi/providers';
@@ -28,12 +26,6 @@ app.use(express.json());
 // Redis setup
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const publisher = new Redis(REDIS_URL);
-
-// Helper to publish events to Redis
-function publish(channel: string, event: string, data: any) {
-  const payload = JSON.stringify({ event, data });
-  return publisher.publish(channel, payload);
-}
 
 // Health check (back-compat)
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -75,7 +67,7 @@ app.get('/v1/worker/health', async (_req: Request, res: Response) => {
     const now = Date.now();
     const lastTs = heartbeat?.ts ?? null;
     const healthy =
-      lastTs !== null && now - lastTs <= thresholdMs ? true : false;
+      lastTs !== null && now - lastTs <= thresholdMs;
 
     // Best-effort Redis ping
     let redisOk = false;
@@ -98,7 +90,7 @@ app.get('/v1/worker/health', async (_req: Request, res: Response) => {
       healthy,
       lastHeartbeatAt: lastTs ? new Date(lastTs).toISOString() : null,
       uptimeSeconds: heartbeat?.uptimeMs
-        ? Math.floor(heartbeat.uptimeMs / 1000)
+        ? Math.floor(heartbeat?.uptimeMs / 1000)
         : null,
       now: new Date(now).toISOString(),
       thresholdMs,
@@ -281,80 +273,6 @@ app.post('/v1/notifications/device-token', async (req: Request, res: Response) =
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('POST /v1/notifications/device-token error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// POST /v1/webhooks/github
-app.post('/v1/webhooks/github', async (req: Request, res: Response) => {
-  try {
-    // For Iteration 1, we'll skip signature verification
-    // TODO: Add signature verification using GITHUB_WEBHOOK_SECRET
-
-    const event = req.headers['x-github-event'] as string;
-    const { action, pull_request, repository } = req.body || {};
-
-    // Only handle pull_request events
-    if (event !== 'pull_request' || !pull_request || !repository) {
-      return res.status(200).json({ message: 'Event ignored' });
-    }
-
-    // Only handle opened or synchronize actions
-    if (action !== 'opened' && action !== 'synchronize') {
-      return res.status(200).json({ message: 'Action ignored' });
-    }
-
-    // Find job by branch name
-    const headBranch = pull_request.head.ref;
-    const baseBranch = pull_request.base.ref;
-    const repoFullName = repository.full_name;
-
-    const job = await prisma.job.findFirst({
-      where: {
-        repo: repoFullName,
-        featureBranch: headBranch,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!job) {
-      return res.status(200).json({ message: 'No matching job found' });
-    }
-
-    // Create or update PR record
-    const prStatus = pull_request.draft ? 'draft' : 'open';
-    
-    await createPullRequestRow({
-      jobId: job.id,
-      repo: repoFullName,
-      prNumber: pull_request.number,
-      url: pull_request.html_url,
-      status: prStatus,
-      headBranch,
-      baseBranch,
-    });
-
-    // Update job status if needed
-    if (job.status !== JobStatus.PR_OPEN) {
-      await updateJob(job.id, {
-        status: JobStatus.PR_OPEN,
-        prUrl: pull_request.html_url,
-      });
-    }
-
-    // Publish PR event
-    publish(`job:${job.id}`, 'pr', {
-      url: pull_request.html_url,
-      number: pull_request.number,
-      status: prStatus,
-    });
-
-    // TODO: Send push notification to device tokens
-    // This will be implemented in a separate PR
-
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('POST /v1/webhooks/github error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
