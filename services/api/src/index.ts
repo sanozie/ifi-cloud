@@ -10,7 +10,10 @@ import {
   upsertDraftSpec,
   upsertDeviceToken,
 } from '@ifi/db';
-import { plan, draftSpecFromMessages } from '@ifi/providers';
+import {
+  plan,
+  draftSpecFromMessages,
+} from '@ifi/providers';
 import {
   JobStatus,
   MessageRole,
