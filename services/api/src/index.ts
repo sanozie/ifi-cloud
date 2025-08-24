@@ -163,7 +163,7 @@ app.get('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
       }));
 
     // Build draft spec via provider
-    const content = await draftSpecFromMessages(messages);
+    const content = await draftSpecFromMessages(messages, { plannerModel: 'gpt-5' });
 
     // Determine title
     let title = 'Draft Spec';
@@ -196,9 +196,6 @@ app.get('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
 
-    if (!confirm) {
-      return res.status(400).json({ error: 'confirmation required' });
-    }
     // Get latest draft spec
     const finalizedSpec = await getLatestDraftSpec(threadId);
     if (!finalizedSpec) {
