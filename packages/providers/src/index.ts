@@ -58,19 +58,6 @@ export async function plan(
     }),
   };
 
-  // When no OpenAI key: return stub stream
-  if (!process.env.OPENAI_API_KEY) {
-    const stub = `# Plan for: ${prompt}\n\n1. Analyze the requirements\n2. Design a solution\n3. Implement the code\n4. Test\n5. Iterate`;
-    const rs = new ReadableStream({
-      start(c) {
-        c.enqueue(new TextEncoder().encode(stub));
-        c.close();
-      },
-    });
-    // @ts-ignore – minimal object contract for callers
-    return { textStream: rs };
-  }
-
   // Delegate
   return streamText({
     model: openai(mergedConfig.plannerModel),

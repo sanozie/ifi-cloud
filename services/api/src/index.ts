@@ -120,13 +120,6 @@ app.get('/v1/worker/health', async (_req: Request, res: Response) => {
 app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   try {
     const { threadId, input } = req.body || {};
-    const userId = req.headers['x-user-id'] as string;
-
-    // If caller sets ?stream=1 or x-stream-ui=1 header → stream mode
-    const streamMode =
-      req.query.stream === '1' ||
-      req.headers['x-stream-ui'] === '1' ||
-      false;
 
     if (typeof input !== 'string' || !input.trim()) {
       return res.status(400).json({ error: 'input is required' });
@@ -142,7 +135,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     } else {
       // Extract a title from the first ~50 chars of input
       const title = input.substring(0, 50) + (input.length > 50 ? '...' : '');
-      thread = await createThread({ title, userId });
+      thread = await createThread({ title });
     }
 
     // Save user message
