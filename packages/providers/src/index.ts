@@ -2,9 +2,9 @@ import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 
 // Vercel AI SDK v5
 import { generateText, streamText } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createFireworks } from '@ai-sdk/fireworks';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { experimental_createMCPClient } from 'ai';
+import { openai } from '@ai-sdk/openai'
 
 /**
  * Provider configuration
@@ -35,9 +35,7 @@ let mcpToolsCacheAt = 0;
 let mcpFetchInFlight: Promise<any> | null = null;
 
 // Instantiate model providers (null when missing API key so we can fall back to stub)
-const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-const fireworks = createFireworks({ apiKey: process.env.FIREWORKS_API_KEY })
+const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 
 /**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
@@ -60,7 +58,7 @@ export async function plan(
 
     // Delegate
     return streamText({
-      model: openai(mergedConfig.plannerModel),
+      model: openrouter(mergedConfig.plannerModel),
       messages: [
         {
           role: 'system',
@@ -101,7 +99,7 @@ Write a clear, well-structured design spec that includes a title, overview, requ
 Respond ONLY with Markdown.`;
 
   const { text } = await generateText({
-    model: openai(mergedConfig.plannerModel),
+    model: openrouter(mergedConfig.plannerModel),
     prompt,
     maxOutputTokens: mergedConfig.maxTokens,
     temperature: 0.3,
@@ -121,15 +119,15 @@ export async function codegen(
   config: Partial<ProviderConfig> = {}
 ): Promise<string> {
   const mergedConfig = { ...defaultConfig, ...config };
-  // Stub if no Fireworks
-  if (!fireworks) {
-    console.warn('Fireworks API key not set, returning stub code');
+  // Stub if no OpenRouter
+  if (!openrouter) {
+    console.warn('OpenRouter API key not set, returning stub code');
     return `// Generated stub code for: ${instruction}\n\nfunction implementFeature() {\n  // TODO: Implement the actual feature\n  console.log("Feature implementation pending");\n  return "Not yet implemented";\n}\n`;
   }
 
   try {
     const { text } = await generateText({
-      model: fireworks(mergedConfig.codegenModel),
+      model: openrouter(mergedConfig.codegenModel),
       prompt: `You are an expert software developer. Generate code based on the following instruction:\n\n${instruction}\n\nCode:`,
       maxOutputTokens: mergedConfig.maxTokens,
       temperature: 0.1,
@@ -137,7 +135,7 @@ export async function codegen(
     });
     return text;
   } catch (error) {
-    console.error('Error generating code with Fireworks via Vercel AI SDK:', error);
+    console.error('Error generating code with OpenRouter via Vercel AI SDK:', error);
     throw new Error(`Failed to generate code: ${(error as Error).message}`);
   }
 }

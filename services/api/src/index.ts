@@ -133,9 +133,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    const stream = await plan(input, {
-      plannerModel: process.env.CODEGEN_PLANNER_MODEL || 'gpt-5',
-    });
+    const stream = await plan(input);
 
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
@@ -163,7 +161,7 @@ app.get('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
       }));
 
     // Build draft spec via provider
-    const content = await draftSpecFromMessages(messages, { plannerModel: 'gpt-5' });
+    const content = await draftSpecFromMessages(messages);
 
     // Determine title
     let title = 'Draft Spec';

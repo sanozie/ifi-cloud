@@ -5,19 +5,6 @@ __metadata:
   version: 8
   cacheKey: 10c0
 
-"@ai-sdk/fireworks@npm:^1.0.11":
-  version: 1.0.11
-  resolution: "@ai-sdk/fireworks@npm:1.0.11"
-  dependencies:
-    "@ai-sdk/openai-compatible": "npm:1.0.11"
-    "@ai-sdk/provider": "npm:2.0.0"
-    "@ai-sdk/provider-utils": "npm:3.0.5"
-  peerDependencies:
-    zod: ^3.25.76 || ^4
-  checksum: 10c0/f9dd9a00f3917f1172d145af73cff3622e74404d37a12746648675aa06a463ae54fb9e4c1fe43280e85ae8538c727306c1fbfd10685ce2f061ed0aaa620ed439
-  languageName: node
-  linkType: hard
-
 "@ai-sdk/gateway@npm:1.0.11":
   version: 1.0.11
   resolution: "@ai-sdk/gateway@npm:1.0.11"
@@ -27,18 +14,6 @@ __metadata:
   peerDependencies:
     zod: ^3.25.76 || ^4
   checksum: 10c0/17fd10fbe9c9b9f46dbfc72f0630d1381f089410d533a5331ef4f68f3f200dd2474c6c0378ce57213c114778b7cca03149b21019651668cb138c6f48a05fdc9c
-  languageName: node
-  linkType: hard
-
-"@ai-sdk/openai-compatible@npm:1.0.11":
-  version: 1.0.11
-  resolution: "@ai-sdk/openai-compatible@npm:1.0.11"
-  dependencies:
-    "@ai-sdk/provider": "npm:2.0.0"
-    "@ai-sdk/provider-utils": "npm:3.0.5"
-  peerDependencies:
-    zod: ^3.25.76 || ^4
-  checksum: 10c0/697d28b69434f444ec57ca295b8a486885e2fda541314b6b5ceb96351eea009de475a0bcf7b95d292570d0c6418593116b567e28fc5bd959ca317785b3d4b57f
   languageName: node
   linkType: hard
 
@@ -424,12 +399,12 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@ifi/providers@workspace:packages/providers"
   dependencies:
-    "@ai-sdk/fireworks": "npm:^1.0.11"
     "@ai-sdk/openai": "npm:^2.0.19"
+    "@openrouter/ai-sdk-provider": "npm:^1.1.2"
     ai: "npm:^5.0.22"
     openai: "npm:^4.56.0"
     typescript: "npm:^5.5.4"
-    zod: "npm:^4.0.17"
+    zod: "npm:^3.25.76"
   languageName: unknown
   linkType: soft
 
@@ -781,6 +756,16 @@ __metadata:
     "@octokit/webhooks-types": "npm:7.6.1"
     aggregate-error: "npm:^3.1.0"
   checksum: 10c0/4d9f5fe686c0b87781aa6bbac6585d7ea92d99648ddb0fbc491e6dc00e598f1c359c8197f044f7863aea401691967febca9172f3deb422549d629a43309432b0
+  languageName: node
+  linkType: hard
+
+"@openrouter/ai-sdk-provider@npm:^1.1.2":
+  version: 1.1.2
+  resolution: "@openrouter/ai-sdk-provider@npm:1.1.2"
+  peerDependencies:
+    ai: ^5.0.0
+    zod: ^3.24.1 || ^v4
+  checksum: 10c0/1ad50804189910d52c2c10e479bec40dfbd2109820e43135d001f4f8706be6ace532d4769a8c30111f5870afdfa97b815c7334b2e4d8d36ca68b1578ce5d9a41
   languageName: node
   linkType: hard
 
@@ -3629,9 +3614,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^4.0.17":
-  version: 4.0.17
-  resolution: "zod@npm:4.0.17"
-  checksum: 10c0/c56ef4cc02f8f52be8724c5a8b338266202d68477c7606bee9b7299818b75c9adc27f16f4b6704a372f3e7578bd016f389de19bfec766564b7c39d0d327c540a
+"zod@npm:^3.25.76":
+  version: 3.25.76
+  resolution: "zod@npm:3.25.76"
+  checksum: 10c0/5718ec35e3c40b600316c5b4c5e4976f7fee68151bc8f8d90ec18a469be9571f072e1bbaace10f1e85cf8892ea12d90821b200e980ab46916a6166a4260a983c
   languageName: node
   linkType: hard
