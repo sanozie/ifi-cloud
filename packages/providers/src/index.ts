@@ -5,6 +5,8 @@ import { generateText, streamText, experimental_createMCPClient, type ModelMessa
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { openai } from '@ai-sdk/openai';
 
+import { addMessage } from '@ifi/db';
+
 /**
  * Provider configuration
  */
@@ -40,6 +42,7 @@ const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
  */
 export async function plan(
+  threadId: string,
   prompt: string,
   previousMessages?: ModelMessage[],
   config: Partial<ProviderConfig> = {}
@@ -80,7 +83,22 @@ export async function plan(
       model: openrouter(mergedConfig.plannerModel),
       messages,
       tools,
-      onFinish: (response) => {},
+      onStepFinish: async (response) => {
+        if (threadId && response.text) {
+          try {
+            await addMessage({
+              threadId,
+              role: 'assistant',
+              content: response.text,
+              tokensPrompt: response.usage?.inputTokens,
+              tokensCompletion: response.usage?.outputTokens,
+              costUsd: response.usage?.totalTokens ? response.usage.totalTokens * 0.00001 : undefined, // Adjust cost calculation as needed
+            });
+          } catch (error) {
+            console.error('Error saving assistant message:', error);
+          }
+        }
+      },
       temperature: 0.2,
     });
   } catch (error: any) {

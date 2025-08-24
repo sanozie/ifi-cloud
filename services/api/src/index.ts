@@ -150,7 +150,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     });
 
     // Pass prior messages to retain context (exclude the one we just added)
-    const stream = await plan(input, messages);
+    const stream = await plan(threadId, input, messages);
 
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
