@@ -146,8 +146,8 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   }
 });
 
-// POST /v1/specs/:threadId/draft
-app.post('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
+// GET /v1/specs/:threadId/draft
+app.get('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
 
@@ -191,8 +191,8 @@ app.post('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
   }
 });
 
-// POST /v1/specs/:threadId/finalize
-app.post('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
+// GET /v1/specs/:threadId/finalize
+app.get('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
   try {
     const { threadId } = req.params;
 
