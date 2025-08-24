@@ -17,6 +17,7 @@ import {
 } from '@ifi/shared';
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
+import type { ModelMessage } from 'ai'
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -126,6 +127,21 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       thread = await createThread({ title });
     }
 
+    // Collect existing messages (ordered asc from getThread helper)
+    // These will be used as context for the next plan() call
+    const messages: ModelMessage[] = thread.messages
+      ? thread.messages
+          .filter(
+            (m: { role: string }) =>
+              ['user', 'assistant', 'system', 'tool'].includes(m.role)
+          )
+          .map((m: { role: string; content: string }) => ({
+            // Narrow the string to the exact literal type union expected by the provider
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+          }))
+      : [];
+
     // Save user message
     await addMessage({
       threadId: thread.id,
@@ -133,7 +149,8 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    const stream = await plan(input);
+    // Pass prior messages to retain context (exclude the one we just added)
+    const stream = await plan(input, messages);
 
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
@@ -155,7 +172,7 @@ app.get('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
-    const messages = thread.messages.map((m) => ({
+    const messages: ModelMessage[] = thread.messages.map((m) => ({
         role: m.role as MessageRole,
         content: m.content,
       }));

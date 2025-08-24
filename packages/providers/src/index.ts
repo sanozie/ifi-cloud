@@ -1,10 +1,9 @@
 import { DefaultPlannerModel, DefaultCodegenModel } from '@ifi/shared';
 
 // Vercel AI SDK v5
-import { generateText, streamText } from 'ai';
+import { generateText, streamText, experimental_createMCPClient, type ModelMessage } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { experimental_createMCPClient } from 'ai';
-import { openai } from '@ai-sdk/openai'
+import { openai } from '@ai-sdk/openai';
 
 /**
  * Provider configuration
@@ -42,6 +41,7 @@ const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
  */
 export async function plan(
   prompt: string,
+  previousMessages?: ModelMessage[],
   config: Partial<ProviderConfig> = {}
 ): Promise<ReturnType<typeof streamText>> {
   try {
@@ -56,18 +56,31 @@ export async function plan(
       }),
     };
 
+    // System message that's always included
+    const systemMessage = {
+      role: 'system',
+      content:
+        'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
+    } as const;
+
+    // Create messages array with context from previous messages if provided
+    const messages = previousMessages
+      ? [
+          systemMessage,
+          ...previousMessages,
+          { role: 'user', content: prompt } as const
+        ] 
+      : [
+          systemMessage,
+          { role: 'user', content: prompt } as const
+        ];
+
     // Delegate
     return streamText({
       model: openrouter(mergedConfig.plannerModel),
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. If the message does not have anything to do with any software implementations, just respond normally.',
-        },
-        { role: 'user', content: prompt },
-      ],
+      messages,
       tools,
+      onFinish: (response) => {},
       temperature: 0.2,
     });
   } catch (error: any) {
@@ -80,7 +93,7 @@ export async function plan(
  * Build a Markdown design spec from a conversation transcript.
  */
 export async function draftSpecFromMessages(
-  messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
+  messages: ModelMessage[],
   config: Partial<ProviderConfig> = {}
 ): Promise<string> {
   const mergedConfig = { ...defaultConfig, ...config };
