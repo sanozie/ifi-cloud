@@ -43,9 +43,9 @@ const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
  */
 export async function plan(
-  threadId: string,
   prompt: string,
   previousMessages?: ModelMessage[],
+  onStepFinish?: (step: any) => void,
   config: Partial<ProviderConfig> = {}
 ): Promise<ReturnType<typeof streamText>> {
   try {
@@ -95,22 +95,7 @@ export async function plan(
       model: openrouter(mergedConfig.plannerModel),
       messages,
       tools,
-      onStepFinish: async (response) => {
-        if (threadId && response.text) {
-          try {
-            await addMessage({
-              threadId,
-              role: 'assistant',
-              content: response.text + '\n' + response.content,
-              tokensPrompt: response.usage?.inputTokens,
-              tokensCompletion: response.usage?.outputTokens,
-              costUsd: response.usage?.totalTokens ? response.usage.totalTokens * 0.00001 : undefined, // Adjust cost calculation as needed
-            });
-          } catch (error) {
-            console.error('Error saving assistant message:', error);
-          }
-        }
-      },
+      onStepFinish,
       onFinish: async () => {
         await mcpClient.close();
       },

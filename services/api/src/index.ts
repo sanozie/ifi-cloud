@@ -150,7 +150,22 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     });
 
     // Pass prior messages to retain context (exclude the one we just added)
-    const stream = await plan(threadId, input, messages);
+    const stream = await plan(input, messages, async (response) => {
+      if (threadId && response.text) {
+        try {
+          await addMessage({
+            threadId,
+            role: 'assistant',
+            content: response.text + '\n' + response.content,
+            tokensPrompt: response.usage?.inputTokens,
+            tokensCompletion: response.usage?.outputTokens,
+            costUsd: response.usage?.totalTokens ? response.usage.totalTokens * 0.00001 : undefined, // Adjust cost calculation as needed
+          });
+        } catch (error) {
+          console.error('Error saving assistant message:', error);
+        }
+      }
+    });
 
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
