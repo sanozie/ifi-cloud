@@ -76,16 +76,16 @@ if [ ! -f "$CONTINUE_CONFIG_DIR/config.json" ]; then
 {
   "models": [
     {
-      "title": "OpenAI GPT-4",
-      "provider": "openai",
-      "model": "gpt-4",
-      "apiKey": "${OPENAI_API_KEY}"
+      "title": "Claude Sonnet 4",
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "apiKey": "${ANTHROPIC_API_KEY}"
     }
   ],
   "embeddingModel": {
-    "provider": "openai",
-    "model": "text-embedding-ada-002",
-    "apiKey": "${OPENAI_API_KEY}"
+    "provider": "voyage-ai",
+    "model": "voyage-code-3",
+    "apiKey": "${VOYAGE_API_KEY}"
   }
 }
 EOF

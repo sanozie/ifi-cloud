@@ -49,6 +49,11 @@ services:
         value: "" # comma-separated list of repository URLs (set in dashboard)
       - key: OPENROUTER_API_KEY
         sync: false
+      # Claude Sonnet 4 & Voyage Code 3
+      - key: ANTHROPIC_API_KEY   # Claude Sonnet 4
+        sync: false
+      - key: VOYAGE_API_KEY      # Voyage Code 3 embeddings
+        sync: false
 
   # Worker Service
   - type: worker
