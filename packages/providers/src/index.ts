@@ -14,6 +14,7 @@ import { promises } from 'fs';
 import {
   getCurrentRepoContext,
   prepareRepoForContinue,
+  getAvailableBranches,
 } from '@ifi/integrations';
 // DB helpers
 import {
@@ -252,6 +253,29 @@ function createCheckoutBranchTool(mcptool: any) {
   }) as any;
 }
 
+/**
+ * List all available branches (local & remote) for a repository – useful when
+ * the planner needs to decide which branch to work on.
+ */
+function createGetBranchesTool(mcptool: any) {
+  return mcptool({
+    name: 'getBranches',
+    description:
+      'Return the list of local and remote branches for the specified repository.',
+    inputSchema: z.object({
+      repo: z.string().describe('Full repo name, e.g. owner/repo'),
+    }),
+    async execute({ repo }: { repo: string }) {
+      try {
+        const result = await getAvailableBranches(repo);
+        return result;
+      } catch (err: any) {
+        return { error: true, message: `getBranches failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
+
 
 /**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
@@ -274,6 +298,7 @@ export async function plan(
     const finalizeSpecTool = createFinalizeSpecTool(mcptool);
     const getCurrentBranchTool = createGetCurrentBranchTool(mcptool);
     const checkoutBranchTool = createCheckoutBranchTool(mcptool);
+    const getBranchesTool = createGetBranchesTool(mcptool);
 
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
@@ -284,6 +309,7 @@ export async function plan(
       finalize_spec: finalizeSpecTool as any,
       get_current_branch: getCurrentBranchTool as any,
       checkout_branch: checkoutBranchTool as any,
+      get_branches: getBranchesTool as any,
     } as const;
 
     // System message that's always included
@@ -310,6 +336,7 @@ Branch-context tools:
 • If you are unsure which branch is currently checked-out (or whether the repo exists locally), CALL the \`get_current_branch\` tool with the \`repo\` parameter.  
 • When you need to work on an **UPDATE** spec or otherwise switch to a different branch, CALL the \`checkout_branch\` tool with the desired \`repo\` and \`branch\`.  
 • Use these tools to ensure the **continue** CLI receives the correct code context before performing any codebase queries.  
+• To view all available branches (local & remote) before deciding, CALL the \`get_branches\` tool.
 
 General guidelines:
 • Keep all normal conversation messages concise and focused.  

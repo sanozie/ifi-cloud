@@ -221,6 +221,77 @@ export async function getBranchStatus(repoFullName: string): Promise<{
 
 /**
  * Get the diff between two branches or commits
+ * Get a comprehensive list of branches for a repository (local + remote)
+ * along with the currently-checked-out branch and ahead/behind status.
+ */
+export async function getAvailableBranches(repoFullName: string): Promise<{
+  localBranches: string[];
+  remoteBranches: string[];
+  /**
+   * Current checked-out branch (undefined if repo not cloned yet)
+   */
+  currentBranch?: string;
+  /**
+   * Ahead/behind counts with respect to the remote tracking branch
+   * for the current branch (undefined if not on a tracking branch).
+   */
+  branchStatus?: { ahead: number; behind: number };
+}> {
+  // If repo is not cloned yet, return empty sets but preserve path information
+  const repoDir = path.join(DEFAULT_REPOS_DIR, repoFullName.replace('/', '_'));
+
+  try {
+    await ensureRepoCloned(repoFullName);
+  } catch {
+    // Repo missing and clone failed (e.g. private repo without creds) – return minimal info
+    return { localBranches: [], remoteBranches: [], currentBranch: undefined };
+  }
+
+  try {
+    const [{ stdout: locals }, { stdout: remotes }, currentBranch] =
+      await Promise.all([
+        execPromise('git branch --list', { cwd: repoDir }),
+        execPromise('git ls-remote --heads origin', { cwd: repoDir }),
+        getCurrentBranch(repoFullName).catch(() => undefined),
+      ]);
+
+    const localBranches = locals
+      .split('\n')
+      .filter(Boolean)
+      .map((b) => b.trim().replace(/^\*\s+/, ''));
+
+    const remoteBranches = remotes
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split('\t')[1]?.replace('refs/heads/', '') || '')
+      .filter(Boolean);
+
+    let branchStatus: { ahead: number; behind: number } | undefined;
+
+    if (currentBranch && remoteBranches.includes(currentBranch)) {
+      try {
+        const { stdout } = await execPromise(
+          `git rev-list --left-right --count ${currentBranch}...origin/${currentBranch}`,
+          { cwd: repoDir }
+        );
+        const [behindStr, aheadStr] = stdout.trim().split('\t');
+        branchStatus = {
+          ahead: parseInt(aheadStr || '0', 10),
+          behind: parseInt(behindStr || '0', 10),
+        };
+      } catch {
+        // Ignore if unable to compute; leave undefined
+      }
+    }
+
+    return { localBranches, remoteBranches, currentBranch, branchStatus };
+  } catch (error) {
+    console.error(`Error retrieving branches list: ${error}`);
+    return { localBranches: [], remoteBranches: [], currentBranch: undefined };
+  }
+}
+
+/**
  */
 export async function getDiff(
   repoFullName: string,

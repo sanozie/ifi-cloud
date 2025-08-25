@@ -32,6 +32,7 @@ import {
   getRepoPathForContinue,
   prepareRepoForContinue,
   getCurrentRepoContext,
+  getAvailableBranches,
 } from './mcp.js';
 
 // Export all GitHub helpers
@@ -64,6 +65,7 @@ export const mcp = {
   getRepoPathForContinue,
   prepareRepoForContinue,
   getCurrentRepoContext,
+  getAvailableBranches,
 };
 
 // Named exports for individual functions
@@ -89,6 +91,7 @@ export {
   getRepoPathForContinue,
   prepareRepoForContinue,
   getCurrentRepoContext,
+  getAvailableBranches,
 };
 
 // Default export with all integrations
