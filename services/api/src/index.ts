@@ -180,6 +180,84 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Thread management endpoints (used by iOS client)
+// ---------------------------------------------------------------------------
+
+// GET /v1/threads – list all threads with last-message preview
+app.get('/v1/threads', async (_req: Request, res: Response) => {
+  try {
+    const threads = await prisma.thread.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    const payload = threads.map((t) => ({
+      id: t.id,
+      title: t.title,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      lastMessage: t.messages?.[0]
+        ? {
+            id: t.messages[0].id,
+            role: t.messages[0].role,
+            content: t.messages[0].content,
+            createdAt: t.messages[0].createdAt,
+          }
+        : null,
+    }));
+
+    return res.status(200).json(payload);
+  } catch (err) {
+    console.error('GET /v1/threads error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /v1/threads/:id – full thread with messages
+app.get('/v1/threads/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const thread = await getThread(id);
+
+    if (!thread) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    return res.status(200).json(thread);
+  } catch (err) {
+    console.error('GET /v1/threads/:id error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// DELETE /v1/threads/:id – delete thread and its messages
+app.delete('/v1/threads/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Verify existence first
+    const existing = await prisma.thread.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    await prisma.thread.delete({
+      where: { id },
+    });
+
+    return res.status(204).send();
+  } catch (err) {
+    console.error('DELETE /v1/threads/:id error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // GET /v1/jobs/:id
 app.get('/v1/jobs/:id', async (req: Request, res: Response) => {
   try {

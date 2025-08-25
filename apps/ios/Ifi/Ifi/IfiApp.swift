@@ -6,27 +6,18 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct IfiApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    // MARK: - Dependencies
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    /// Shared API client for the lifetime of the app
+    private let apiClient = APIClient(baseURLString: ProcessInfo.processInfo.environment["IFI_API_BASE_URL"] ?? "http://localhost:3000")
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ThreadListView(apiClient: apiClient)
+                .preferredColorScheme(.dark) // Force dark theme
         }
-        .modelContainer(sharedModelContainer)
     }
 }
