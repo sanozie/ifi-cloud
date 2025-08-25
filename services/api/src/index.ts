@@ -6,16 +6,10 @@ import {
   addMessage,
   getJob,
   upsertDeviceToken,
-  getActiveThread,
-  getThreadSpecs,
-  updateThreadState,
-  createUpdateSpec,
 } from '@ifi/db';
 import {
   plan,
 } from '@ifi/providers';
-import { ThreadState } from '@ifi/shared';
-import { prepareRepoForContinue } from '@ifi/integrations';
 
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
@@ -231,129 +225,6 @@ app.post('/v1/notifications/device-token', async (req: Request, res: Response) =
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('POST /v1/notifications/device-token error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/*  Multi-spec / PR-feedback workflow endpoints                      */
-/* ------------------------------------------------------------------ */
-
-// GET /v1/threads/:id
-app.get('/v1/threads/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const thread = await getActiveThread(id);
-    if (!thread) {
-      return res.status(404).json({ error: 'Thread not found' });
-    }
-
-    // Latest PR (if any)
-    const pr = await prisma.pullRequest.findFirst({
-      where: {
-        job: {
-          threadId: id,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    return res.status(200).json({
-      ...thread,
-      currentPr: pr
-        ? { url: pr.url, number: pr.prNumber, status: pr.status }
-        : null,
-    });
-  } catch (err) {
-    console.error('GET /v1/threads/:id error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// POST /v1/threads/:id/checkout
-app.post('/v1/threads/:id/checkout', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { branch, repo } = req.body || {};
-
-    const thread = await prisma.thread.findUnique({ where: { id } });
-    if (!thread) {
-      return res.status(404).json({ error: 'Thread not found' });
-    }
-
-    // Validate repository input (required)
-    if (typeof repo !== 'string' || !repo.trim()) {
-      return res
-        .status(400)
-        .json({ error: '`repo` (e.g. \"owner/name\") is required in request body' });
-    }
-
-    const branchToCheckout = branch || thread.currentPrBranch || 'main';
-
-    const result = await prepareRepoForContinue(repo, branchToCheckout);
-    return res.status(200).json(result);
-  } catch (err) {
-    console.error('POST /v1/threads/:id/checkout error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// GET /v1/threads/:id/specs
-app.get('/v1/threads/:id/specs', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const specs = await getThreadSpecs(id);
-    return res.status(200).json(specs);
-  } catch (err) {
-    console.error('GET /v1/threads/:id/specs error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// POST /v1/threads/:id/specs  (create UPDATE spec)
-app.post('/v1/threads/:id/specs', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { title, content, targetBranch } = req.body || {};
-
-    if (!title || !content || !targetBranch) {
-      return res
-        .status(400)
-        .json({ error: 'title, content, and targetBranch are required' });
-    }
-
-    const spec = await createUpdateSpec({
-      threadId: id,
-      title,
-      content,
-      targetBranch,
-    });
-
-    return res.status(201).json(spec);
-  } catch (err) {
-    console.error('POST /v1/threads/:id/specs error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// POST /v1/threads/:id/transition
-app.post('/v1/threads/:id/transition', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { state, currentPrBranch, currentPrUrl } = req.body || {};
-
-    if (!state || !Object.values(ThreadState).includes(state)) {
-      return res.status(400).json({ error: 'Invalid or missing state' });
-    }
-
-    const thread = await updateThreadState(id, state, {
-      currentPrBranch,
-      currentPrUrl,
-    });
-
-    return res.status(200).json(thread);
-  } catch (err) {
-    console.error('POST /v1/threads/:id/transition error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });

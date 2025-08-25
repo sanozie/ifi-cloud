@@ -52,21 +52,7 @@ Each `Spec` row now has:
 
 ---
 
-## 4  |  New/updated API endpoints
-
-| Method & Path | Purpose |
-|---------------|---------|
-| `GET  /v1/threads/:id` | Returns full thread, current PR (if any) and state. |
-| `POST /v1/threads/:id/transition` | Change thread state (e.g. back to `planning`). |
-| `GET  /v1/threads/:id/specs` | List all specs (initial + updates) for a thread. |
-| `POST /v1/threads/:id/specs` | Create an **UPDATE** spec. Body: `{ title, content, targetBranch }`. |
-| `POST /v1/threads/:id/checkout` | Use MCP to checkout the branch locally so _continue CLI_ can analyse the latest code. Body: `{ repo, branch? }`. |
-
-All endpoints return consistent JSON and propagate errors with useful messages.
-
----
-
-## 5  |  MCP (Model-Context-Protocol) tools
+## 4  |  MCP (Model-Context-Protocol) tools
 
 The new file `packages/integrations/src/mcp.ts` provides thin Git wrappers:
 
@@ -77,23 +63,28 @@ The new file `packages/integrations/src/mcp.ts` provides thin Git wrappers:
 
 These functions are **pure Node**, rely on the host’s Git credentials and are exported via `@ifi/integrations`.
 
+> The AI planner/worker calls these MCP helpers directly.  
+> When a thread is in **planning** for an `update` spec, the model figures out the required
+> branch and invokes `prepareRepoForContinue()` (which internally clones & checks out) –
+> no additional HTTP API calls are necessary.
+
 ---
 
-## 6  |  End-to-end example
+## 5  |  End-to-end example
 
 1. **User:** “Add dark-mode toggle to settings.”
 2. **Planner:** Creates `INITIAL` spec → worker opens draft PR `feat/autogen-a1b2`.
 3. **State:** `planning ➜ working ➜ waiting_for_feedback`.
 4. **Reviewer:** Comments “rename var and add tests”.
-5. **User or webhook:** Calls `/threads/:id/transition` back to `planning`.
+5. Thread automatically transitions back to `planning`.
 6. **Planner:** Generates `UPDATE` spec (version 2) targeting branch `feat/autogen-a1b2`.
-7. **Worker:** Uses MCP to `git checkout feat/autogen-a1b2`, updates files, force-push, PR updates.
+7. **Worker:** Invokes MCP to `git checkout feat/autogen-a1b2`, updates files, force-pushes; PR is updated.
 8. **State:** back to `waiting_for_feedback`.
 9. **Reviewer:** Approves & merges → webhook marks thread `archived`.
 
 ---
 
-## 7  |  Database schema changes
+## 6  |  Database schema changes
 
 Prisma `schema.prisma` updates:
 
@@ -125,7 +116,7 @@ New helper functions in `packages/db/src/index.ts`:
 
 ---
 
-## 8  |  Worker service enhancements
+## 7  |  Worker service enhancements
 
 `services/worker/src/index.ts`
 
