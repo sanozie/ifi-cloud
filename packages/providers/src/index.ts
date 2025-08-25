@@ -8,6 +8,8 @@ import { z } from 'zod'
 // Execute shell commands
 import { exec } from 'child_process';
 import { promisify } from 'util';
+// Filesystem (static import – eliminates dynamic import)
+import { promises as fs } from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -89,8 +91,7 @@ export async function plan(
         },
       ) {
         try {
-          // Determine target repo directory
-          const fs = await import('fs/promises');
+          // Determine target repo directory (static fs import)
           const reposDir = '/repos';
           let repoDir = repository
             ? `${reposDir}/${repository}`
