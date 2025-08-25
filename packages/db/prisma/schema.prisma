@@ -17,7 +17,6 @@ datasource db {
 model Thread {
   id        String   @id @default(cuid())
   title     String
-  status    String   @default("active") // legacy status (kept for back-compat)
   // New lifecycle state for multi-spec workflow
   // planning | working | waiting_for_feedback | archived
   state     String   @default("planning")
@@ -34,7 +33,6 @@ model Thread {
   jobs       Job[]
 
   @@index([createdAt(sort: Desc)])
-  @@index([status])
   @@index([state])
 }
 

@@ -100,19 +100,19 @@ Prisma `schema.prisma` updates:
 ```prisma
 model Thread {
   // …
-  state            String   @default("planning")  // new
-  currentPrBranch  String?  // new
-  currentPrUrl     String?  // new
+  state            String   @default("planning")
+  currentPrBranch  String?
+  currentPrUrl     String?
 }
 
 model Spec {
   // …
-  specType     String   @default("initial")       // new
-  targetBranch String?                           // new
+  specType     String   @default("initial")
+  targetBranch String?
 }
 
 model PullRequest {
-  // unchanged, still linked to Job
+  // linked to Job
 }
 ```
 
@@ -142,4 +142,4 @@ New helper functions in `packages/db/src/index.ts`:
 
 ## Summary
 
-The multi-spec workflow keeps a single conversational thread in sync with an evolving pull-request, allowing seamless **plan → code → review → update** cycles until merge. The API, database, worker and integration layers have all been extended to support this behaviour while maintaining backward compatibility for legacy functionality.
+The multi-spec workflow keeps a single conversational thread in sync with an evolving pull-request, allowing seamless **plan → code → review → update** cycles until merge. The API, database, worker and integration layers have all been extended to support this behaviour across the system.
