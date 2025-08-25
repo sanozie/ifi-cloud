@@ -10,7 +10,7 @@ import {
 import {
   plan,
 } from '@ifi/providers';
-// JobStatus, MessageRole and spec helpers are now handled via MCP tools inside @ifi/providers
+
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
 import type { ModelMessage } from 'ai'
