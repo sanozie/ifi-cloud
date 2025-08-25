@@ -143,8 +143,8 @@ export async function plan(
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
-      searchCodebase: searchCodebaseTool as any,
-      reportCompletion: reportCompletionTool as any,
+      search_codebase: searchCodebaseTool as any,
+      report_completion: reportCompletionTool as any,
     } as const;
 
     // System message that's always included
