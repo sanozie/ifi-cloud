@@ -98,16 +98,12 @@ if [ ! -f "$CONTINUE_CONFIG_DIR/config.json" ]; then
   "models": [
     {
       "title": "Claude Sonnet 4",
-      "provider": "anthropic",
-      "model": "claude-3-5-sonnet-20241022",
-      "apiKey": "${ANTHROPIC_API_KEY}"
+      "provider": "openrouter"
+      "model": "anthropic/claude-sonnet-4"
+      "apiBase": "https://openrouter.ai/api/v1"
+      "apiKey": "${OPENROUTER_API_KEY}"
     }
-  ],
-  "embeddingModel": {
-    "provider": "voyage-ai",
-    "model": "voyage-code-3",
-    "apiKey": "${VOYAGE_API_KEY}"
-  }
+  ]
 }
 EOF
   log_info "Continue CLI configuration created"
