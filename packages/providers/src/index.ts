@@ -5,6 +5,11 @@ import { generateText, streamText, type ModelMessage, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod'
+// Execute shell commands
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 /**
  * Provider configuration
@@ -60,9 +65,67 @@ export async function plan(
       },
     }) as any;
 
+    // --- searchCodebase MCP tool -----------------------------
+    const searchCodebaseTool = mcptool({
+      name: 'searchCodebase',
+      description:
+        'Search a local cloned repository with Continue CLI using natural language queries.',
+      inputSchema: z.object({
+        query: z.string().describe('Natural language question about the codebase'),
+        repository: z
+          .string()
+          .describe(
+            'Optional repository name (folder under /repos). Defaults to first available.',
+          )
+          .optional(),
+      }),
+      async execute(
+        {
+          query,
+          repository,
+        }: {
+          query: string;
+          repository?: string;
+        },
+      ) {
+        try {
+          // Determine target repo directory
+          const fs = await import('fs/promises');
+          const reposDir = '/repos';
+          let repoDir = repository
+            ? `${reposDir}/${repository}`
+            : (
+                await fs.readdir(reposDir, { withFileTypes: true })
+              ).find((d) => d.isDirectory())?.name
+              ? `${reposDir}/${(
+                  await fs.readdir(reposDir, { withFileTypes: true })
+                ).find((d) => d.isDirectory())!.name}`
+              : null;
+
+          if (!repoDir) {
+            throw new Error('No repository found under /repos');
+          }
+
+          // Build command – Continue CLI headless query
+          const cmd = `continue query "${query.replace(/\"/g, '\\"')}" --headless`;
+
+          // Execute within repo directory
+          const { stdout } = await execAsync(cmd, { cwd: repoDir, maxBuffer: 5_000_000 });
+
+          return { output: stdout.trim() };
+        } catch (err: any) {
+          return {
+            error: true,
+            message: `searchCodebase execution failed: ${err.message}`,
+          };
+        }
+      },
+    }) as any;
+
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
+      searchCodebase: searchCodebaseTool as any,
       reportCompletion: reportCompletionTool as any,
     } as const;
 

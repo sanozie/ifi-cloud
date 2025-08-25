@@ -42,6 +42,13 @@ services:
         sync: false
       - key: FIREWORKS_API_KEY
         sync: false
+      # Codebase RAG / Continue CLI
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOS
+        value: "" # comma-separated list of repository URLs (set in dashboard)
+      - key: OPENROUTER_API_KEY
+        sync: false
 
   # Worker Service
   - type: worker

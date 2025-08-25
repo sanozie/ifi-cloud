@@ -36,8 +36,15 @@ RUN yarn workspaces focus -A --production
 FROM node:20-slim
 WORKDIR /app
 
-# Prisma requires OpenSSL at runtime in Debian-based images
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Prisma requires OpenSSL at runtime in Debian-based images  
+# We also need git (for cloning repos) and bash (for entrypoint script)
+RUN apt-get update -y \
+ && apt-get install -y --no-install-recommends openssl git bash \
+ && rm -rf /var/lib/apt/lists/*
+
+# ----------- Continue CLI -----------
+# Install the continue.dev CLI globally so our custom MCP tool can invoke it
+RUN npm install -g @continuedev/cli
 
 # Copy production artifacts and dependencies
 COPY --from=builder /app/node_modules ./node_modules
@@ -63,5 +70,12 @@ ENV NODE_ENV=production
 USER node
 WORKDIR /app/services/api
 
+# Workspace for checked-out repositories
+RUN mkdir -p /repos && chown -R node:node /repos
+
+# Copy startup script that clones/pulls repos then starts API
+COPY services/api/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 EXPOSE 3000
-CMD ["node", "dist/services/api/src/index.js"]
+CMD ["./entrypoint.sh"]
