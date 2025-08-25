@@ -10,6 +10,14 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs, { Dirent } from 'fs';
 import { promises } from 'fs';
+// DB helpers
+import {
+  getThread,
+  upsertDraftSpec,
+  getLatestDraftSpec,
+  createJob,
+} from '@ifi/db';
+import { JobStatus } from '@ifi/shared';
 
 const execAsync = promisify(exec);
 
@@ -140,18 +148,103 @@ export async function plan(
       },
     }) as any;
 
+    // --- draftSpec MCP tool -----------------------------
+    const draftSpecTool = mcptool({
+      name: 'draftSpec',
+      description:
+        'Create or update a draft design spec for a given thread based on the conversation so far.',
+      inputSchema: z.object({
+        threadId: z.string().describe('ID of the thread for which to draft the spec'),
+      }),
+      async execute({ threadId }: { threadId: string }) {
+        try {
+          const thread = await getThread(threadId);
+          if (!thread) {
+            return { error: true, message: `Thread ${threadId} not found` };
+          }
+          const modelMessages: ModelMessage[] = thread.messages.map((m) => ({
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+          }));
+          const content = await draftSpecFromMessages(modelMessages);
+
+          // derive title
+          let title = 'Draft Spec';
+          const firstLine = content.split('\n')[0] ?? '';
+          if (firstLine.startsWith('#')) {
+            title = firstLine.replace(/^#+\s*/, '').trim();
+          } else if (thread.title) {
+            title = `Draft Spec for ${thread.title}`;
+          }
+
+          const spec = await upsertDraftSpec(threadId, { title, content });
+          return { specId: spec.id, content: spec.content };
+        } catch (err: any) {
+          return { error: true, message: `draftSpec failed: ${err.message}` };
+        }
+      },
+    }) as any;
+
+    // --- finalizeSpec MCP tool -----------------------------
+    const finalizeSpecTool = mcptool({
+      name: 'finalizeSpec',
+      description:
+        'Finalize the latest draft spec for a thread and create a queued implementation job.',
+      inputSchema: z.object({
+        threadId: z.string().describe('ID of the thread whose spec should be finalized'),
+      }),
+      async execute({ threadId }: { threadId: string }) {
+        try {
+          const spec = await getLatestDraftSpec(threadId);
+          if (!spec) {
+            return { error: true, message: 'No draft spec found to finalize' };
+          }
+          const job = await createJob({
+            threadId,
+            specId: spec.id,
+            status: JobStatus.QUEUED,
+          });
+          return { jobId: job.id };
+        } catch (err: any) {
+          return { error: true, message: `finalizeSpec failed: ${err.message}` };
+        }
+      },
+    }) as any;
+
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
       search_codebase: searchCodebaseTool as any,
       report_completion: reportCompletionTool as any,
+      draft_spec: draftSpecTool as any,
+      finalize_spec: finalizeSpecTool as any,
     } as const;
 
     // System message that's always included
     const systemMessage: ModelMessage = {
       role: 'system',
-      content:
-        'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. When you have completed your work, CALL the reportCompletion tool exactly once with a short summary. Do NOT include any completion text directly in the user-visible response.',
+      content: `
+You are IFI, an AI engineering assistant that guides a user through THREE distinct stages:
+
+1. **Planning Discussion** – Conversational back-and-forth to understand the user’s goal.
+2. **Drafting Spec** – Produce a structured design/implementation spec that the user can review.
+3. **Finalization & Implementation** – After explicit user approval, queue an implementation job.
+
+Determine the CURRENT INTENT from the latest user message:
+• If they are still clarifying requirements or asking questions → stay in *Planning Discussion*.  
+• If they indicate they are **ready to see a spec** ( e.g. “sounds good, can you draft a spec?” or “let’s proceed” ) → CALL the \`draft_spec\` tool exactly once.  
+• If they explicitly **approve the draft spec** ( e.g. “looks good, ship it”, “approved”, “go ahead with implementation” ) → CALL the \`finalize_spec\` tool exactly once.  
+
+Tool usage rules:
+• Never call \`draft_spec\` or \`finalize_spec\` without meeting the intent criteria above.  
+• After calling a tool, wait for the tool response before progressing to the next stage.  
+• When the overall task (including any necessary tool calls) is complete, CALL the \`reportCompletion\` tool **exactly once** with a one-sentence summary.  
+
+General guidelines:
+• Keep all normal conversation messages concise and focused.  
+• NEVER leak internal reasoning or tool call JSON to the user—only properly formatted tool calls.  
+• Do NOT output any completion text directly; the client UI renders results from tools.  
+`,
     };
 
     // Create message array with context from previous messages if provided
