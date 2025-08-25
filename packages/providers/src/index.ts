@@ -5,10 +5,9 @@ import { generateText, streamText, type ModelMessage, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod'
-// Execute shell commands
+// Shell Execution
 import { exec } from 'child_process';
 import { promisify } from 'util';
-// Filesystem (static import – eliminates dynamic import)
 import { promises as fs } from 'fs';
 
 const execAsync = promisify(exec);
@@ -126,8 +125,8 @@ export async function plan(
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
-      searchCodebase: searchCodebaseTool as any,
-      reportCompletion: reportCompletionTool as any,
+      search_codebase: searchCodebaseTool as any,
+      report_completion: reportCompletionTool as any,
     } as const;
 
     // System message that's always included
