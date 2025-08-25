@@ -56,6 +56,17 @@ struct ChatView: View {
                     }
                     .foregroundColor(.red)
                     .accessibilityLabel("Stop response")
+                } else {
+                    // Refresh button - only shown when not streaming
+                    Button {
+                        Task {
+                            await viewModel.refresh()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(viewModel.isLoading)
+                    .accessibilityLabel("Refresh conversation")
                 }
             }
         }
@@ -106,6 +117,10 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.top, 12)
             .padding(.bottom, 8)
+        }
+        .refreshable {
+            // Pull-to-refresh functionality
+            await viewModel.refresh()
         }
         .scrollPosition(id: $scrollTarget)
         .scrollBounceBehavior(.basedOnSize)
@@ -222,7 +237,7 @@ struct MessageBubble: View {
                 // Message content
                 Group {
                     // Assistant messages (final, not streaming) render Markdown
-                    if !isFromUser && !isStreaming {
+                    if !isFromUser {
                         MarkdownText(markdown: message.content)
                     } else {
                         // User messages and live-streaming chunks render plain text
@@ -234,10 +249,9 @@ struct MessageBubble: View {
                 .background {
                     RoundedRectangle(cornerRadius: 18)
                         .fill(isFromUser ?
-                              Color.accentColor :
-                              (colorScheme == .dark ?
-                               Color.secondary.opacity(0.2) :
-                               Color.secondary.opacity(0.1)))
+                              Color.secondary.opacity(0.2) :
+                                Color.clear
+                        )
                 }
                 .foregroundStyle(isFromUser ? .white : .primary)
                 .textSelection(.enabled)

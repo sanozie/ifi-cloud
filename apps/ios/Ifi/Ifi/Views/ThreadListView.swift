@@ -66,6 +66,16 @@ struct ThreadListView: View {
                     .buttonStyle(.borderedProminent)
                     .sensoryFeedback(.selection, trigger: true)
                 }
+                // Refresh button (secondary action)
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        Task { await viewModel.refresh() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(viewModel.isLoading)
+                    .accessibilityLabel("Refresh chat list")
+                }
             }
             .refreshable {
                 await viewModel.refresh()
