@@ -5,11 +5,19 @@ import {
   getThread,
   addMessage,
   getJob,
+  /* multi-spec helpers */
+  getActiveThread,
+  getThreadSpecs,
+  updateThreadState,
+  createUpdateSpec,
   upsertDeviceToken,
 } from '@ifi/db';
 import {
   plan,
 } from '@ifi/providers';
+
+/* Thread state enum */
+import { ThreadState } from '@ifi/shared';
 
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
@@ -198,6 +206,70 @@ app.get('/v1/jobs/:id', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('GET /v1/jobs/:id error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Multi-spec workflow endpoints (no branch checkout API)            */
+/* ------------------------------------------------------------------ */
+
+// GET /v1/threads/:id/specs – list all specs for a thread
+app.get('/v1/threads/:id/specs', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const specs = await getThreadSpecs(id);
+    return res.status(200).json(specs);
+  } catch (err) {
+    console.error('GET /v1/threads/:id/specs error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /v1/threads/:id/specs – create an UPDATE spec
+app.post('/v1/threads/:id/specs', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, content, targetBranch } = req.body || {};
+
+    if (!title || !content || !targetBranch) {
+      return res
+        .status(400)
+        .json({ error: 'title, content, and targetBranch are required' });
+    }
+
+    const spec = await createUpdateSpec({
+      threadId: id,
+      title,
+      content,
+      targetBranch,
+    });
+
+    return res.status(201).json(spec);
+  } catch (err) {
+    console.error('POST /v1/threads/:id/specs error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /v1/threads/:id/transition – change thread lifecycle state
+app.post('/v1/threads/:id/transition', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { state, currentPrBranch, currentPrUrl } = req.body || {};
+
+    if (!state || !Object.values(ThreadState).includes(state)) {
+      return res.status(400).json({ error: 'Invalid or missing state' });
+    }
+
+    const thread = await updateThreadState(id, state, {
+      currentPrBranch,
+      currentPrUrl,
+    });
+
+    return res.status(200).json(thread);
+  } catch (err) {
+    console.error('POST /v1/threads/:id/transition error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });

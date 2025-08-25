@@ -52,13 +52,33 @@ Each `Spec` row now has:
 
 ---
 
-## 4  |  MCP (Model-Context-Protocol) tools
+## 4  |  Required API endpoints
+
+Although branch-checkout is handled exclusively by MCP helpers, we still expose a
+very small surface in the API service so clients (iOS app / web console) can:
+
+| Method & Path | Purpose |
+|---------------|---------|
+| `GET  /v1/threads/:id/specs` | Return **all** specs (initial + updates) for a thread. |
+| `POST /v1/threads/:id/specs` | Create an **UPDATE** spec – body must include `title`, `content`, `targetBranch`. |
+| `POST /v1/threads/:id/transition` | Mutate thread lifecycle state (`planning`, `working`, `waiting_for_feedback`, `archived`). |
+
+> 🚫 **Notice:** There is **no** endpoint for checking-out branches – that is
+> deliberately left to the MCP layer so the planning model can switch context
+> without extra round-trips to the backend.
+
+---
+
+## 5  |  MCP (Model-Context-Protocol) tools
 
 The new file `packages/integrations/src/mcp.ts` provides thin Git wrappers:
 
 * `ensureRepoCloned(repoFullName)` – clone or fetch into `/tmp/ifi-repos/…`.
 * `checkoutBranch(repo, branch)` – checks out existing branch or creates tracking one.
 * `prepareRepoForContinue(repo, branch)` – one-shot helper returning `{ repoPath, branch, commit }` for the **continue** CLI.
+* `getCurrentRepoContext(repo)` – lightweight introspection used by the planner
+  to learn _where it is_ (`currentBranch`, `currentCommit`, local / remote
+  branch lists) **before** deciding whether a checkout is required.
 * Utility functions: `branchExistsLocally`, `branchExistsRemotely`, `getDiff`, `readFile`, …
 
 These functions are **pure Node**, rely on the host’s Git credentials and are exported via `@ifi/integrations`.
@@ -70,7 +90,7 @@ These functions are **pure Node**, rely on the host’s Git credentials and are 
 
 ---
 
-## 5  |  End-to-end example
+## 6  |  End-to-end example
 
 1. **User:** “Add dark-mode toggle to settings.”
 2. **Planner:** Creates `INITIAL` spec → worker opens draft PR `feat/autogen-a1b2`.
@@ -84,7 +104,7 @@ These functions are **pure Node**, rely on the host’s Git credentials and are 
 
 ---
 
-## 6  |  Database schema changes
+## 7  |  Database schema changes
 
 Prisma `schema.prisma` updates:
 
@@ -116,7 +136,7 @@ New helper functions in `packages/db/src/index.ts`:
 
 ---
 
-## 7  |  Worker service enhancements
+## 8  |  Worker service enhancements
 
 `services/worker/src/index.ts`
 

@@ -31,6 +31,7 @@ import {
   readFile,
   getRepoPathForContinue,
   prepareRepoForContinue,
+  getCurrentRepoContext,
 } from './mcp.js';
 
 // Export all GitHub helpers
@@ -62,6 +63,7 @@ export const mcp = {
   readFile,
   getRepoPathForContinue,
   prepareRepoForContinue,
+  getCurrentRepoContext,
 };
 
 // Named exports for individual functions
@@ -86,6 +88,7 @@ export {
   readFile,
   getRepoPathForContinue,
   prepareRepoForContinue,
+  getCurrentRepoContext,
 };
 
 // Default export with all integrations

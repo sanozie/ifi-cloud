@@ -296,4 +296,72 @@ export async function prepareRepoForContinue(
     branch,
     commit
   };
+}  // <-- close prepareRepoForContinue properly
+
+/**
+ * Return high-level repository context metadata for the planner.  
+ * – If the repo has not been cloned yet, `repoExists` will be false and only
+ *   `repoPath` will be returned (path where it would be cloned).  
+ * – Otherwise it returns current branch/commit and full local/remote branch
+ *   listings so the model can decide whether it needs to checkout a different
+ *   branch.
+ */
+export async function getCurrentRepoContext(repoFullName: string): Promise<{
+  repoPath: string;
+  repoExists: boolean;
+  currentBranch?: string;
+  currentCommit?: string;
+  localBranches?: string[];
+  remoteBranches?: string[];
+}> {
+  const repoDir = path.join(DEFAULT_REPOS_DIR, repoFullName.replace('/', '_'));
+
+  // Determine if repoDir/.git exists
+  let repoExists = false;
+  try {
+    await fs.stat(path.join(repoDir, '.git'));
+    repoExists = true;
+  } catch {
+    repoExists = false;
+  }
+
+  // If repo not cloned, return minimal info
+  if (!repoExists) {
+    return { repoPath: repoDir, repoExists };
+  }
+
+  // Repo exists – gather additional details
+  try {
+    const [{ stdout: branchList }, { stdout: remoteList }, currentBranch, currentCommit] =
+      await Promise.all([
+        execPromise('git branch --list', { cwd: repoDir }),
+        execPromise('git ls-remote --heads origin', { cwd: repoDir }),
+        getCurrentBranch(repoFullName),
+        getCurrentCommit(repoFullName),
+      ]);
+
+    const localBranches = branchList
+      .split('\n')
+      .filter(Boolean)
+      .map((b) => b.trim().replace(/^\*\s+/, ''));
+
+    const remoteBranches = remoteList
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => line.split('\t')[1]?.replace('refs/heads/', '') || '')
+      .filter(Boolean);
+
+    return {
+      repoPath: repoDir,
+      repoExists,
+      currentBranch,
+      currentCommit,
+      localBranches,
+      remoteBranches,
+    };
+  } catch (error) {
+    console.error(`Error retrieving repo context: ${error}`);
+    // Return partial context rather than throwing to keep planner resilient
+    return { repoPath: repoDir, repoExists };
+  }
 }
