@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { MessageRole } from '@ifi/shared';
+import { MessageRole, ThreadState, SpecType } from '@ifi/shared';
 import type { Prisma } from '@prisma/client';
 
 // Singleton PrismaClient instance
@@ -193,6 +193,109 @@ export async function upsertDraftSpec(
       content: draft.content,
       version: 1,
     },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Multi-spec helpers                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Update a thread's lifecycle state and (optionally) current PR info.
+ * Passing null for branch/url will clear the fields.
+ */
+export async function updateThreadState(
+  threadId: string,
+  state: ThreadState,
+  opts?: { currentPrBranch?: string | null; currentPrUrl?: string | null }
+) {
+  return prisma.thread.update({
+    where: { id: threadId },
+    data: {
+      state,
+      currentPrBranch:
+        opts && Object.prototype.hasOwnProperty.call(opts, 'currentPrBranch')
+          ? opts.currentPrBranch
+          : undefined,
+      currentPrUrl:
+        opts && Object.prototype.hasOwnProperty.call(opts, 'currentPrUrl')
+          ? opts.currentPrUrl
+          : undefined,
+    },
+  });
+}
+
+/**
+ * Create an UPDATE-type spec (version is latest +1)
+ */
+export async function createUpdateSpec(params: {
+  threadId: string;
+  title: string;
+  content: string;
+  targetBranch: string;
+}) {
+  const latest = await prisma.spec.findFirst({
+    where: { threadId: params.threadId },
+    orderBy: { version: 'desc' },
+  });
+
+  return prisma.spec.create({
+    data: {
+      threadId: params.threadId,
+      title: params.title,
+      content: params.content,
+      version: (latest?.version ?? 0) + 1,
+      specType: SpecType.UPDATE,
+      targetBranch: params.targetBranch,
+    },
+  });
+}
+
+/**
+ * Fetch complete thread info (messages + specs) for planner/worker.
+ */
+export async function getActiveThread(threadId: string) {
+  return prisma.thread.findUnique({
+    where: { id: threadId },
+    include: {
+      messages: { orderBy: { createdAt: 'asc' } },
+      specs: { orderBy: { createdAt: 'asc' } },
+    },
+  });
+}
+
+/**
+ * Get all specs for a thread, ordered oldest->newest.
+ */
+export function getThreadSpecs(threadId: string) {
+  return prisma.spec.findMany({
+    where: { threadId },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+/**
+ * Determine whether a thread currently has an active PR awaiting feedback.
+ */
+export async function threadHasActivePr(threadId: string): Promise<boolean> {
+  const thread = await prisma.thread.findUnique({
+    where: { id: threadId },
+    select: { state: true, currentPrBranch: true },
+  });
+  return (
+    !!thread &&
+    thread.state === ThreadState.WAITING_FOR_FEEDBACK &&
+    !!thread.currentPrBranch
+  );
+}
+
+/**
+ * Reset thread to PLANNING state after PR feedback cycle completes.
+ */
+export function transitionThreadToPlanning(threadId: string) {
+  return updateThreadState(threadId, ThreadState.PLANNING, {
+    currentPrBranch: null,
+    currentPrUrl: null,
   });
 }
 

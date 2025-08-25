@@ -83,3 +83,59 @@ export interface ImplementationSpec {
 
 // Planner intent surfaced to the client
 export type Intent = 'ready_to_codegen' | 'needs_more_info';
+
+/* ------------------------------------------------------------------ */
+/*  Multi-spec / PR-feedback workflow additions                       */
+/* ------------------------------------------------------------------ */
+
+// Thread lifecycle state (orthogonal to legacy status)
+export enum ThreadState {
+  PLANNING = 'planning',
+  WORKING = 'working',
+  WAITING_FOR_FEEDBACK = 'waiting_for_feedback',
+  ARCHIVED = 'archived',
+}
+
+// Spec variants
+export enum SpecType {
+  INITIAL = 'initial',
+  UPDATE = 'update',
+}
+
+// Pull-request status (simplified view for the client)
+export enum PRStatus {
+  DRAFT = 'draft',
+  OPEN = 'open',
+  MERGED = 'merged',
+  CLOSED = 'closed',
+}
+
+// Useful branch metadata surfaced to the planner / continue CLI
+export interface BranchInfo {
+  branch: string;
+  commit: string;
+}
+
+// Request payload when the assistant generates an UPDATE spec
+export interface UpdateSpecRequest {
+  threadId: string;
+  previousSpecId: string;
+  targetBranch: string;
+  /**
+   * High-level summary of what changed in the repo / PR since the last spec
+   * (e.g. “Addressed reviewer comments in foo.ts, added unit tests”)
+   */
+  diffSummary: string;
+  /**
+   * Full markdown content of the updated spec
+   */
+  content: string;
+}
+
+// Event describing a thread state change (for logging / analytics)
+export interface ThreadStateTransition {
+  threadId: string;
+  from: ThreadState;
+  to: ThreadState;
+  reason?: string;
+}
