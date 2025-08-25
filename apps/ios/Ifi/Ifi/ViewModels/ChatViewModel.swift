@@ -129,6 +129,28 @@ final class ChatViewModel {
         
         isLoading = false
     }
+
+    // MARK: - Refresh Support
+    /// Reload the currently-open thread from the API.
+    ///  – Gracefully does nothing when no active thread is set.
+    ///  – Mirrors `loadThread(id:)` behaviour for loading / error handling.
+    @MainActor
+    func refresh() async {
+        // Ensure we actually have a thread to refresh
+        guard let threadId = currentThread?.id else { return }
+
+        // Show a temporary loading indicator
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            await loadThread(id: threadId)
+        } catch {
+            // `loadThread` already wraps its own `do/catch` but this is
+            // defensive in case its implementation changes.
+            handleInternalError(error)
+        }
+    }
     
     /// Send a message and handle the response
     /// - Parameter text: The message text to send

@@ -229,7 +229,21 @@ app.get('/v1/threads/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
-    return res.status(200).json(thread);
+    // Return only the fields expected by the iOS client
+    const payload = {
+      id: thread.id,
+      title: thread.title,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      messages: thread.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+      })),
+    };
+
+    return res.status(200).json(payload);
   } catch (err) {
     console.error('GET /v1/threads/:id error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
