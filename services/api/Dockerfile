@@ -67,11 +67,10 @@ RUN test -f /app/packages/providers/dist/index.js \
  && test -e /app/node_modules/@ifi/db/package.json
 
 ENV NODE_ENV=production
-USER node
-WORKDIR /app/services/api
-
 # Workspace for checked-out repositories
 RUN mkdir -p /repos && chown -R node:node /repos
+USER node
+WORKDIR /app/services/api
 
 # Copy startup script that clones/pulls repos then starts API
 COPY services/api/entrypoint.sh ./entrypoint.sh
