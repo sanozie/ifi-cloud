@@ -22,6 +22,31 @@ import { JobStatus } from '@ifi/shared';
 const execAsync = promisify(exec);
 
 /**
+ * Provider configuration
+ */
+export interface ProviderConfig {
+  plannerModel: string;
+  codegenModel: string;
+  maxTokens: number;
+  timeoutMs: number;
+  costCapUsd: number;
+}
+
+/**
+ * Default provider configuration
+ */
+export const defaultConfig: ProviderConfig = {
+  plannerModel: process.env.CODEGEN_PLANNER_MODEL || DefaultPlannerModel,
+  codegenModel: process.env.CODEGEN_MODEL || DefaultCodegenModel,
+  maxTokens: parseInt(process.env.CODEGEN_MAX_TOKENS || '8192', 10),
+  timeoutMs: parseInt(process.env.CODEGEN_TIMEOUT_MS || '60000', 10),
+  costCapUsd: parseFloat(process.env.CODEGEN_COST_CAP_USD || '1.0'),
+};
+
+// Instantiate model providers (null when missing API key so we can fall back to stub)
+const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+
+/**
  * ------------------ MCP TOOL FACTORIES ------------------
  * We expose small helper functions that take the `mcptool`
  * constructor (aliased from `ai.tool`) and return a fully
@@ -177,30 +202,6 @@ function createFinalizeSpecTool(mcptool: any) {
   }) as any;
 }
 
-/**
- * Provider configuration
- */
-export interface ProviderConfig {
-  plannerModel: string;
-  codegenModel: string;
-  maxTokens: number;
-  timeoutMs: number;
-  costCapUsd: number;
-}
-
-/**
- * Default provider configuration
- */
-export const defaultConfig: ProviderConfig = {
-  plannerModel: process.env.CODEGEN_PLANNER_MODEL || DefaultPlannerModel,
-  codegenModel: process.env.CODEGEN_MODEL || DefaultCodegenModel,
-  maxTokens: parseInt(process.env.CODEGEN_MAX_TOKENS || '8192', 10),
-  timeoutMs: parseInt(process.env.CODEGEN_TIMEOUT_MS || '60000', 10),
-  costCapUsd: parseFloat(process.env.CODEGEN_COST_CAP_USD || '1.0'),
-};
-
-// Instantiate model providers (null when missing API key so we can fall back to stub)
-const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 
 /**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
