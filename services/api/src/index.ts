@@ -5,19 +5,12 @@ import {
   getThread,
   addMessage,
   getJob,
-  createJob,
-  getLatestDraftSpec,
-  upsertDraftSpec,
   upsertDeviceToken,
 } from '@ifi/db';
 import {
   plan,
-  draftSpecFromMessages,
 } from '@ifi/providers';
-import {
-  JobStatus,
-  MessageRole,
-} from '@ifi/shared';
+
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
 import type { ModelMessage } from 'ai'
@@ -176,77 +169,6 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('POST /v1/chat/messages error:', err);
     return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
-  }
-});
-
-// GET /v1/specs/:threadId/draft
-app.get('/v1/specs/:threadId/draft', async (req: Request, res: Response) => {
-  try {
-    const { threadId } = req.params;
-
-    // Load thread with messages (already ordered asc)
-    const thread = await getThread(threadId);
-    if (!thread) {
-      return res.status(404).json({ error: 'Thread not found' });
-    }
-
-    const messages: ModelMessage[] = thread.messages.map((m) => ({
-        role: m.role as MessageRole,
-        content: m.content,
-      }));
-
-    // Build draft spec via provider
-    const content = await draftSpecFromMessages(messages);
-
-    // Determine title
-    let title = 'Draft Spec';
-    const firstLine = content.split('\n')[0] ?? '';
-    if (firstLine.startsWith('#')) {
-      title = firstLine.replace(/^#+\s*/, '').trim();
-    } else if (thread.title) {
-      title = `Draft Spec for ${thread.title}`;
-    }
-
-    const spec = await upsertDraftSpec(threadId, { title, content });
-
-    return res.status(200).json({
-      threadId,
-      spec: {
-        id: spec.id,
-        title: spec.title,
-        content: spec.content,
-        version: spec.version,
-      },
-    });
-  } catch (err) {
-    console.error('POST /v1/specs/:threadId/draft error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// GET /v1/specs/:threadId/finalize
-app.get('/v1/specs/:threadId/finalize', async (req: Request, res: Response) => {
-  try {
-    const { threadId } = req.params;
-
-    // Get latest draft spec
-    const finalizedSpec = await getLatestDraftSpec(threadId);
-    if (!finalizedSpec) {
-      console.error(`[api] No draft spec found for thread ${threadId}`);
-      return res.status(404).json({ error: 'No draft spec found' });
-    }
-
-    // Create a job
-    const job = await createJob({
-      threadId,
-      specId: finalizedSpec.id,
-      status: JobStatus.QUEUED,
-    });
-
-    return res.status(200).json({ jobId: job.id });
-  } catch (err) {
-    console.error('POST /v1/specs/:threadId/finalize error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

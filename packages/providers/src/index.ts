@@ -10,6 +10,14 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs, { Dirent } from 'fs';
 import { promises } from 'fs';
+// DB helpers
+import {
+  getThread,
+  upsertDraftSpec,
+  getLatestDraftSpec,
+  createJob,
+} from '@ifi/db';
+import { JobStatus } from '@ifi/shared';
 
 const execAsync = promisify(exec);
 
@@ -39,6 +47,163 @@ export const defaultConfig: ProviderConfig = {
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 
 /**
+ * ------------------ MCP TOOL FACTORIES ------------------
+ * We expose small helper functions that take the `mcptool`
+ * constructor (aliased from `ai.tool`) and return a fully
+ * configured tool definition.  This keeps `plan()` tidy and
+ * maintains the original runtime behaviour.
+ */
+
+function createReportCompletionTool(mcptool: any) {
+  return mcptool({
+    name: 'reportCompletion',
+    description:
+      'Call this exactly once when you have produced the final plan. The summary should be a concise, one-sentence description of what you accomplished.',
+    inputSchema: z.object({
+      summary: z.string(),
+      code: z.number().optional(),
+    }),
+    async execute() {
+      return { acknowledged: true };
+    },
+  }) as any;
+}
+
+function createSearchCodebaseTool(mcptool: any) {
+  return mcptool({
+    name: 'searchCodebase',
+    description:
+      'Search a local cloned repository with Continue CLI using natural language queries.',
+    inputSchema: z.object({
+      query: z.string().describe('Natural language question about the codebase'),
+      repository: z
+        .string()
+        .describe(
+          'Optional repository name (folder under /repos). Defaults to first available.',
+        )
+        .optional(),
+    }),
+    async execute(
+      {
+        query,
+        repository,
+      }: {
+        query: string;
+        repository?: string;
+      },
+    ) {
+      try {
+        // Determine target repo directory (static fs import)
+        const reposDir = '/repos';
+        let dirEntries: Dirent[] | null = null;
+        try {
+          dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
+        } catch (e: any) {
+          if (e?.code === 'ENOENT') {
+            return {
+              warning: true,
+              message:
+                '📂 The /repos directory does not exist. Repository setup was likely skipped (e.g., during CI).',
+            };
+          }
+          throw e;
+        }
+
+        const repoDir =
+          repository
+            ? `${reposDir}/${repository}`
+            : dirEntries.find((d) => d.isDirectory())?.name
+            ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
+            : null;
+
+        if (!repoDir) {
+          return {
+            warning: true,
+            message:
+              '📂 The /repos directory exists but contains no cloned repositories. Repository setup may have been skipped (e.g., in CI).',
+          };
+        }
+
+        const cmd = `continue query "${query.replace(/\"/g, '\\"')}" --headless`;
+        const { stdout } = await execAsync(cmd, { cwd: repoDir, maxBuffer: 5_000_000 });
+
+        return { output: stdout.trim() };
+      } catch (err: any) {
+        return {
+          error: true,
+          message: `searchCodebase execution failed: ${err.message}`,
+        };
+      }
+    },
+  }) as any;
+}
+
+function createDraftSpecTool(mcptool: any) {
+  return mcptool({
+    name: 'draftSpec',
+    description:
+      'Create or update a draft design spec for a given thread based on the conversation so far.',
+    inputSchema: z.object({
+      threadId: z.string().describe('ID of the thread for which to draft the spec'),
+    }),
+    async execute({ threadId }: { threadId: string }) {
+      try {
+        const thread = await getThread(threadId);
+        if (!thread) {
+          return { error: true, message: `Thread ${threadId} not found` };
+        }
+        const modelMessages: ModelMessage[] = thread.messages.map((m) => ({
+          role: m.role as 'user' | 'assistant' | 'system',
+          content: m.content,
+        }));
+        const content = await draftSpecFromMessages(modelMessages);
+
+        let title = 'Draft Spec';
+        const firstLine = content.split('\n')[0] ?? '';
+        if (firstLine.startsWith('#')) {
+          title = firstLine.replace(/^#+\s*/, '').trim();
+        } else if (thread.title) {
+          title = `Draft Spec for ${thread.title}`;
+        }
+
+        const spec = await upsertDraftSpec(threadId, { title, content });
+        return { specId: spec.id, content: spec.content };
+      } catch (err: any) {
+        return { error: true, message: `draftSpec failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
+
+function createFinalizeSpecTool(mcptool: any) {
+  return mcptool({
+    name: 'finalizeSpec',
+    description:
+      'Finalize the latest draft spec for a thread and create a queued implementation job.',
+    inputSchema: z.object({
+      threadId: z.string().describe('ID of the thread whose spec should be finalized'),
+    }),
+    async execute({ threadId }: { threadId: string }) {
+      try {
+        const spec = await getLatestDraftSpec(threadId);
+        if (!spec) {
+          return { error: true, message: 'No draft spec found to finalize' };
+        }
+        const job = await createJob({
+          threadId,
+          specId: spec.id,
+          status: JobStatus.QUEUED,
+        });
+        return { jobId: job.id };
+      } catch (err: any) {
+        return { error: true, message: `finalizeSpec failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
+
+
+/**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
  */
 export async function plan(
@@ -52,106 +217,46 @@ export async function plan(
 
     const mcptool: any = tool;
 
-    // Build the completion-reporting tool (runtime type is preserved,
-    // compile-time type is erased to `any`).
-    const reportCompletionTool = mcptool({
-      name: 'reportCompletion',
-      description:
-        'Call this exactly once when you have produced the final plan. The summary should be a concise, one-sentence description of what you accomplished.',
-      inputSchema: z.object({
-        summary: z.string(),
-        code: z.number().optional(),
-      }),
-      async execute() {
-        return { acknowledged: true };
-      },
-    }) as any;
-
-    // --- searchCodebase MCP tool -----------------------------
-    const searchCodebaseTool = mcptool({
-      name: 'searchCodebase',
-      description:
-        'Search a local cloned repository with Continue CLI using natural language queries.',
-      inputSchema: z.object({
-        query: z.string().describe('Natural language question about the codebase'),
-        repository: z
-          .string()
-          .describe(
-            'Optional repository name (folder under /repos). Defaults to first available.',
-          )
-          .optional(),
-      }),
-      async execute(
-        {
-          query,
-          repository,
-        }: {
-          query: string;
-          repository?: string;
-        },
-      ) {
-        try {
-          // Determine target repo directory (static fs import)
-          const reposDir = '/repos';
-          let dirEntries: Dirent[] | null = null;
-          try {
-            // Attempt to read /repos directory; will throw if it doesn't exist
-            dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
-          } catch (e: any) {
-            if (e?.code === 'ENOENT') {
-              return {
-                warning: true,
-                message:
-                  '📂 The /repos directory does not exist. Repository setup was likely skipped (e.g., during CI).',
-              };
-            }
-            throw e; // re-throw other unexpected errors
-          }
-
-          let repoDir = repository
-            ? `${reposDir}/${repository}`
-            : dirEntries.find((d) => d.isDirectory())?.name
-            ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
-            : null;
-
-          if (!repoDir) {
-            // No repositories present – likely CI or first-run
-            return {
-              warning: true,
-              message:
-                '📂 The /repos directory exists but contains no cloned repositories. ' +
-                'Repository setup may have been skipped (e.g., in CI).',
-            };
-          }
-
-          // Build command – Continue CLI headless query
-          const cmd = `continue query "${query.replace(/\"/g, '\\"')}" --headless`;
-
-          // Execute within repo directory
-          const { stdout } = await execAsync(cmd, { cwd: repoDir, maxBuffer: 5_000_000 });
-
-          return { output: stdout.trim() };
-        } catch (err: any) {
-          return {
-            error: true,
-            message: `searchCodebase execution failed: ${err.message}`,
-          };
-        }
-      },
-    }) as any;
+    // Instantiate tools via helper factories
+    const reportCompletionTool = createReportCompletionTool(mcptool);
+    const searchCodebaseTool = createSearchCodebaseTool(mcptool);
+    const draftSpecTool = createDraftSpecTool(mcptool);
+    const finalizeSpecTool = createFinalizeSpecTool(mcptool);
 
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
       search_codebase: searchCodebaseTool as any,
       report_completion: reportCompletionTool as any,
+      draft_spec: draftSpecTool as any,
+      finalize_spec: finalizeSpecTool as any,
     } as const;
 
     // System message that's always included
     const systemMessage: ModelMessage = {
       role: 'system',
-      content:
-        'You are a technical planning assistant. Use tools when needed to gather context, then produce a clear implementation plan. When you have completed your work, CALL the reportCompletion tool exactly once with a short summary. Do NOT include any completion text directly in the user-visible response.',
+      content: `
+You are IFI, an AI engineering assistant that guides a user through THREE distinct stages:
+
+1. **Planning Discussion** – Conversational back-and-forth to understand the user’s goal.
+2. **Drafting Spec** – Produce a structured design/implementation spec that the user can review.
+3. **Finalization & Implementation** – After explicit user approval, queue an implementation job.
+
+Determine the CURRENT INTENT from the latest user message:
+• If they are still clarifying requirements or asking questions → stay in *Planning Discussion*.  
+• If they indicate they are **ready to see a spec** ( e.g. “sounds good, can you draft a spec?” or “let’s proceed” ) → CALL the \`draft_spec\` tool exactly once.  
+• If they explicitly **approve the draft spec** ( e.g. “looks good, ship it”, “approved”, “go ahead with implementation” ) → CALL the \`finalize_spec\` tool exactly once.  
+
+Tool usage rules:
+• Never call \`draft_spec\` or \`finalize_spec\` without meeting the intent criteria above.  
+• After calling a tool, wait for the tool response before progressing to the next stage.  
+• When the overall task (including any necessary tool calls) is complete, CALL the \`reportCompletion\` tool **exactly once** with a one-sentence summary.  
+
+General guidelines:
+• Keep all normal conversation messages concise and focused.  
+• NEVER leak internal reasoning or tool call JSON to the user—only properly formatted tool calls.  
+• Do NOT output any completion text directly; the client UI renders results from tools.  
+`,
     };
 
     // Create message array with context from previous messages if provided
