@@ -69,12 +69,12 @@ RUN test -f /app/packages/providers/dist/index.js \
 ENV NODE_ENV=production
 # Workspace for checked-out repositories
 RUN mkdir -p /repos && chown -R node:node /repos
+# Copy startup script that clones/pulls repos then starts API
+COPY services/api/entrypoint.sh ./services/api/entrypoint.sh
+RUN chmod +x ./services/api/entrypoint.sh
+
 USER node
 WORKDIR /app/services/api
-
-# Copy startup script that clones/pulls repos then starts API
-COPY services/api/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
 
 EXPOSE 3000
 CMD ["./entrypoint.sh"]
