@@ -250,7 +250,11 @@ app.get('/v1/threads/:id', async (req: Request, res: Response) => {
 
     // Latest PR (if any)
     const pr = await prisma.pullRequest.findFirst({
-      where: { threadId: id },
+      where: {
+        job: {
+          threadId: id,
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
