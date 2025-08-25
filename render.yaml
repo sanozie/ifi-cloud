@@ -42,6 +42,18 @@ services:
         sync: false
       - key: FIREWORKS_API_KEY
         sync: false
+      # Codebase RAG / Continue CLI
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOS
+        value: "" # comma-separated list of repository URLs (set in dashboard)
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # Claude Sonnet 4 & Voyage Code 3
+      - key: ANTHROPIC_API_KEY   # Claude Sonnet 4
+        sync: false
+      - key: VOYAGE_API_KEY      # Voyage Code 3 embeddings
+        sync: false
 
   # Worker Service
   - type: worker
