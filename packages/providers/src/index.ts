@@ -10,6 +10,12 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs, { Dirent } from 'fs';
 import { promises } from 'fs';
+// MCP helpers
+import {
+  getCurrentRepoContext,
+  prepareRepoForContinue,
+  getAvailableBranches,
+} from '@ifi/integrations';
 // DB helpers
 import {
   getThread,
@@ -202,6 +208,74 @@ function createFinalizeSpecTool(mcptool: any) {
   }) as any;
 }
 
+/**
+ * Returns information about the current repo context (branch, commit, etc.)
+ */
+function createGetCurrentBranchTool(mcptool: any) {
+  return mcptool({
+    name: 'getCurrentBranch',
+    description:
+      'Get the current Git repository context (branch, commit) so the planner can decide whether it needs to switch branches.',
+    inputSchema: z.object({
+      repo: z.string().describe('Full repo name, e.g. owner/repo'),
+    }),
+    async execute({ repo }: { repo: string }) {
+      try {
+        const ctx = await getCurrentRepoContext(repo);
+        return ctx;
+      } catch (err: any) {
+        return { error: true, message: `getCurrentBranch failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
+
+/**
+ * Checkout / prepare the repository for continue CLI on a specific branch.
+ */
+function createCheckoutBranchTool(mcptool: any) {
+  return mcptool({
+    name: 'checkoutBranch',
+    description:
+      'Clone (if needed) and checkout the specified branch so continue CLI can load the correct context.',
+    inputSchema: z.object({
+      repo: z.string().describe('Full repo name, e.g. owner/repo'),
+      branch: z.string().describe('Branch to checkout (feature branch or main)'),
+    }),
+    async execute({ repo, branch }: { repo: string; branch: string }) {
+      try {
+        const result = await prepareRepoForContinue(repo, branch);
+        return result;
+      } catch (err: any) {
+        return { error: true, message: `checkoutBranch failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
+
+/**
+ * List all available branches (local & remote) for a repository – useful when
+ * the planner needs to decide which branch to work on.
+ */
+function createGetBranchesTool(mcptool: any) {
+  return mcptool({
+    name: 'getBranches',
+    description:
+      'Return the list of local and remote branches for the specified repository.',
+    inputSchema: z.object({
+      repo: z.string().describe('Full repo name, e.g. owner/repo'),
+    }),
+    async execute({ repo }: { repo: string }) {
+      try {
+        const result = await getAvailableBranches(repo);
+        return result;
+      } catch (err: any) {
+        return { error: true, message: `getBranches failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
+
 
 /**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
@@ -222,6 +296,9 @@ export async function plan(
     const searchCodebaseTool = createSearchCodebaseTool(mcptool);
     const draftSpecTool = createDraftSpecTool(mcptool);
     const finalizeSpecTool = createFinalizeSpecTool(mcptool);
+    const getCurrentBranchTool = createGetCurrentBranchTool(mcptool);
+    const checkoutBranchTool = createCheckoutBranchTool(mcptool);
+    const getBranchesTool = createGetBranchesTool(mcptool);
 
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
@@ -230,6 +307,9 @@ export async function plan(
       report_completion: reportCompletionTool as any,
       draft_spec: draftSpecTool as any,
       finalize_spec: finalizeSpecTool as any,
+      get_current_branch: getCurrentBranchTool as any,
+      checkout_branch: checkoutBranchTool as any,
+      get_branches: getBranchesTool as any,
     } as const;
 
     // System message that's always included
@@ -251,6 +331,12 @@ Tool usage rules:
 • Never call \`draft_spec\` or \`finalize_spec\` without meeting the intent criteria above.  
 • After calling a tool, wait for the tool response before progressing to the next stage.  
 • When the overall task (including any necessary tool calls) is complete, CALL the \`reportCompletion\` tool **exactly once** with a one-sentence summary.  
+
+Branch-context tools:  
+• If you are unsure which branch is currently checked-out (or whether the repo exists locally), CALL the \`get_current_branch\` tool with the \`repo\` parameter.  
+• When you need to work on an **UPDATE** spec or otherwise switch to a different branch, CALL the \`checkout_branch\` tool with the desired \`repo\` and \`branch\`.  
+• Use these tools to ensure the **continue** CLI receives the correct code context before performing any codebase queries.  
+• To view all available branches (local & remote) before deciding, CALL the \`get_branches\` tool.
 
 General guidelines:
 • Keep all normal conversation messages concise and focused.  

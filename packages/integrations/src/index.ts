@@ -17,6 +17,24 @@ import {
   queryDatabase,
 } from './notion.js';
 
+// Import MCP (Model Context Protocol) helpers
+import {
+  ensureRepoCloned,
+  branchExistsLocally,
+  branchExistsRemotely,
+  checkoutBranch,
+  getCurrentBranch,
+  getCurrentCommit,
+  getBranchStatus,
+  getDiff,
+  getChangedFiles,
+  readFile,
+  getRepoPathForContinue,
+  prepareRepoForContinue,
+  getCurrentRepoContext,
+  getAvailableBranches,
+} from './mcp.js';
+
 // Export all GitHub helpers
 export const github = {
   createGitHubApp,
@@ -32,6 +50,24 @@ export const notion = {
   queryDatabase,
 };
 
+// Export all MCP helpers
+export const mcp = {
+  ensureRepoCloned,
+  branchExistsLocally,
+  branchExistsRemotely,
+  checkoutBranch,
+  getCurrentBranch,
+  getCurrentCommit,
+  getBranchStatus,
+  getDiff,
+  getChangedFiles,
+  readFile,
+  getRepoPathForContinue,
+  prepareRepoForContinue,
+  getCurrentRepoContext,
+  getAvailableBranches,
+};
+
 // Named exports for individual functions
 export {
   createGitHubApp,
@@ -41,13 +77,30 @@ export {
   listDatabases,
   getDatabase,
   queryDatabase,
+  // MCP exports
+  ensureRepoCloned,
+  branchExistsLocally,
+  branchExistsRemotely,
+  checkoutBranch,
+  getCurrentBranch,
+  getCurrentCommit,
+  getBranchStatus,
+  getDiff,
+  getChangedFiles,
+  readFile,
+  getRepoPathForContinue,
+  prepareRepoForContinue,
+  getCurrentRepoContext,
+  getAvailableBranches,
 };
 
 // Default export with all integrations
 export default {
   github,
   notion,
+  mcp,
 };
 
 // Re-export full helper surface for external convenience
 export * from './github.js';
+
