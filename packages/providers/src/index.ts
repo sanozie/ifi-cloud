@@ -8,7 +8,8 @@ import { z } from 'zod'
 // Shell Execution
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { promises as fs } from 'fs';
+import fs, { Dirent } from 'fs';
+import { promises } from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -92,18 +93,35 @@ export async function plan(
         try {
           // Determine target repo directory (static fs import)
           const reposDir = '/repos';
+          let dirEntries: Dirent[] | null = null;
+          try {
+            // Attempt to read /repos directory; will throw if it doesn't exist
+            dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
+          } catch (e: any) {
+            if (e?.code === 'ENOENT') {
+              return {
+                warning: true,
+                message:
+                  '📂 The /repos directory does not exist. Repository setup was likely skipped (e.g., during CI).',
+              };
+            }
+            throw e; // re-throw other unexpected errors
+          }
+
           let repoDir = repository
             ? `${reposDir}/${repository}`
-            : (
-                await fs.readdir(reposDir, { withFileTypes: true })
-              ).find((d) => d.isDirectory())?.name
-              ? `${reposDir}/${(
-                  await fs.readdir(reposDir, { withFileTypes: true })
-                ).find((d) => d.isDirectory())!.name}`
-              : null;
+            : dirEntries.find((d) => d.isDirectory())?.name
+            ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
+            : null;
 
           if (!repoDir) {
-            throw new Error('No repository found under /repos');
+            // No repositories present – likely CI or first-run
+            return {
+              warning: true,
+              message:
+                '📂 The /repos directory exists but contains no cloned repositories. ' +
+                'Repository setup may have been skipped (e.g., in CI).',
+            };
           }
 
           // Build command – Continue CLI headless query
@@ -125,8 +143,8 @@ export async function plan(
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
       web_search_preview: openai.tools.webSearchPreview({ searchContextSize: 'high' }) as any,
-      search_codebase: searchCodebaseTool as any,
-      report_completion: reportCompletionTool as any,
+      searchCodebase: searchCodebaseTool as any,
+      reportCompletion: reportCompletionTool as any,
     } as const;
 
     // System message that's always included

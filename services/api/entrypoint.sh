@@ -20,22 +20,41 @@ log_error() {
   echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Create repos directory if it doesn't exist
-mkdir -p /repos
+#----------------------------------------------------------
+# Detect CI environment (e.g., GitHub Actions exports CI=true)
+#----------------------------------------------------------
+if [ -n "$CI" ]; then
+  log_warn "CI environment detected (CI=$CI). Skipping repository setup."
+  SKIP_REPOS_SETUP=true
+else
+  SKIP_REPOS_SETUP=false
+fi
+
+#----------------------------------------------------------
+# Create /repos directory (only when repo setup is enabled)
+#----------------------------------------------------------
+if [ "$SKIP_REPOS_SETUP" = false ]; then
+  if mkdir -p /repos 2>/dev/null; then
+    log_info "/repos directory is ready"
+  else
+    log_warn "Could not create /repos directory (permission denied). Skipping repository setup."
+    SKIP_REPOS_SETUP=true
+  fi
+fi
 
 # Configure git to use GITHUB_TOKEN if available
-if [ -n "$GITHUB_TOKEN" ]; then
+if [ "$SKIP_REPOS_SETUP" = false ] && [ -n "$GITHUB_TOKEN" ]; then
   log_info "Configuring git with GitHub token"
   git config --global credential.helper store
   echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
   git config --global user.name "IFI API Service"
   git config --global user.email "ifi-api@example.com"
-else
+elif [ "$SKIP_REPOS_SETUP" = false ]; then
   log_warn "GITHUB_TOKEN not set. Public repositories only."
 fi
 
 # Process repositories
-if [ -n "$GITHUB_REPOS" ]; then
+if [ "$SKIP_REPOS_SETUP" = false ] && [ -n "$GITHUB_REPOS" ]; then
   log_info "Processing repositories: $GITHUB_REPOS"
   
   # Split the comma-separated list
@@ -63,7 +82,9 @@ if [ -n "$GITHUB_REPOS" ]; then
     fi
   done
 else
-  log_warn "GITHUB_REPOS environment variable not set. No repositories will be cloned."
+  if [ "$SKIP_REPOS_SETUP" = false ]; then
+    log_warn "GITHUB_REPOS environment variable not set. No repositories will be cloned."
+  fi
 fi
 
 # Configure Continue CLI if needed
@@ -95,8 +116,12 @@ else
 fi
 
 # Log repositories that were cloned
-log_info "Available repositories:"
-ls -la /repos
+if [ "$SKIP_REPOS_SETUP" = false ]; then
+  log_info "Available repositories:"
+  ls -la /repos
+else
+  log_info "Repository setup skipped; no repositories available."
+fi
 
 # Start the API server
 log_info "Starting API server"
