@@ -39,8 +39,10 @@ WORKDIR /app
 # Prisma requires OpenSSL at runtime in Debian-based images  
 # We also need git (for cloning repos) and bash (for entrypoint script)
 RUN apt-get update -y \
- && apt-get install -y --no-install-recommends openssl git bash \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends openssl git bash ca-certificates \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && update-ca-certificates
 
 # ----------- Continue CLI -----------
 # Install the continue.dev CLI globally so our custom MCP tool can invoke it

@@ -53,6 +53,25 @@ elif [ "$SKIP_REPOS_SETUP" = false ]; then
   log_warn "GITHUB_TOKEN not set. Public repositories only."
 fi
 
+#----------------------------------------------------------
+# Configure SSL/TLS for Git
+#----------------------------------------------------------
+if [ "$SKIP_REPOS_SETUP" = false ]; then
+  log_info "Configuring Git SSL settings"
+  # Ensure Git verifies SSL certificates and uses the system CA bundle
+  git config --global http.sslVerify true
+  git config --global http.sslCAInfo /etc/ssl/certs/ca-certificates.crt
+  # Increase buffer size to avoid issues with large fetches
+  git config --global http.postBuffer 524288000
+
+  # Basic connectivity test
+  log_info "Testing SSL connectivity to GitHub"
+  if ! git ls-remote --heads https://github.com/octocat/Hello-World.git >/dev/null 2>&1; then
+    log_warn "Initial SSL test failed, attempting to update CA certificates"
+    update-ca-certificates 2>/dev/null || true
+  fi
+fi
+
 # Process repositories
 if [ "$SKIP_REPOS_SETUP" = false ] && [ -n "$GITHUB_REPOS" ]; then
   log_info "Processing repositories: $GITHUB_REPOS"
