@@ -195,53 +195,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
     console.log("[chat] ✅ plan() resolved");
 
-    /* ------------------------------------------------------------------
-     *  STREAM RESPONSE – forward AI chunks to the client (Express)
-     * ------------------------------------------------------------------ */
-
-    console.log("[chat] 📡 Setting up streaming response to client");
-
-    // Standard text-stream headers for iOS / curl consumption
-    res.writeHead(200, {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Transfer-Encoding': 'chunked',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    });
-
-    try {
-      // Convert the SDK stream to a web Response and get its reader
-      const textResp = stream.toTextStreamResponse();
-      const reader = textResp.body?.getReader();
-
-      if (!reader) {
-        throw new Error('Readable stream not available from provider');
-      }
-
-      console.log('[chat] 🔄 Streaming chunks to client …');
-
-      // Continuously read chunks and pipe to Express response
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log('[chat] ✅ Stream complete');
-          break;
-        }
-        if (value) {
-          const chunk = new TextDecoder().decode(value);
-          console.log(`[chat] 📤 Sending chunk (${chunk.length} chars)`);
-          res.write(chunk);
-        }
-      }
-    } catch (streamErr: any) {
-      console.error('[chat] ❌ Stream forwarding error:', streamErr);
-      res.write(`error: ${streamErr.message}\n`);
-    }
-
-    // Always end the response
-    console.log('[chat] 🏁 Ending response stream');
-    res.end();
-    return; // Explicit for clarity
+    return stream.toUIMessageStreamResponse()
 
   } catch (err: any) {
     console.error("[chat] 🛑 Error handling chat request:", err.message);
