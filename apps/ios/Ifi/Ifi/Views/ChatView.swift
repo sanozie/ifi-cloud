@@ -97,7 +97,7 @@ struct ChatView: View {
                         }
                         
                         // Show typing indicator while loading *or* until first chunk arrives
-                        if viewModel.isLoading || viewModel.streamContent.items.isEmpty {
+                        if viewModel.isLoading {
                             TypingIndicator()
                         }
                     }

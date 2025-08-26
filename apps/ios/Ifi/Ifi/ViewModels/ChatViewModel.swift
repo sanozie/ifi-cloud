@@ -173,7 +173,9 @@ final class ChatViewModel {
     /// Send a message and handle the response
     func sendMessage() {
         guard !inputText.isEmpty else { return }
-        guard !isLoading && !isStreaming else { return }
+        // Allow sending while a previous response is still streaming;
+        // only block if another network request is already in-flight.
+        guard !isLoading else { return }
         
         // Capture the input text and clear the input field
         let messageText = inputText
