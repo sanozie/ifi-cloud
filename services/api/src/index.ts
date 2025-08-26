@@ -112,21 +112,13 @@ app.get('/v1/worker/health', async (_req: Request, res: Response) => {
 // POST /v1/chat/messages
 app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   try {
-    const reqId = `chat-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .substring(2, 7)}`;
-    const startTs = Date.now();
-    console.log(
-      `[chat][${reqId}] ▶️  Incoming /v1/chat/messages | ts=${new Date(
-        startTs,
-      ).toISOString()} | body=${JSON.stringify(req.body).slice(0, 200)}...`,
-    );
+    console.log("[chat] ▶️  Incoming /v1/chat/messages");
 
     const { threadId, input } = req.body || {};
 
     if (typeof input !== 'string' || !input.trim()) {
       console.log(
-        `[chat][${reqId}] ❌ Validation failed – missing input string`,
+        `[chat] ❌ Validation failed – missing input string`,
       );
       return res.status(400).json({ error: 'input is required' });
     }
@@ -136,16 +128,16 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     if (threadId) {
       thread = await getThread(threadId);
       if (!thread) {
-        console.log(`[chat][${reqId}] 🔎 Thread not found: ${threadId}`);
+        console.log(`[chat] 🔎 Thread not found: ${threadId}`);
         return res.status(404).json({ error: 'Thread not found' });
       }
-      console.log(`[chat][${reqId}] 📂 Loaded existing thread ${threadId}`);
+      console.log(`[chat] 📂 Loaded existing thread ${threadId}`);
     } else {
       // Extract a title from the first ~50 chars of input
       const title = input.substring(0, 50) + (input.length > 50 ? '...' : '');
       thread = await createThread({ title });
       console.log(
-        `[chat][${reqId}] 🆕 Created new thread ${thread.id} with title="${title}"`,
+        `[chat] 🆕 Created new thread ${thread.id} with title="${title}"`,
       );
     }
 
@@ -165,7 +157,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       : [];
 
     console.log(
-      `[chat][${reqId}] 💬 Built context with ${messages.length} previous message(s)`,
+      `[chat] 💬 Built context with ${messages.length} previous message(s)`,
     );
 
     // Save user message
@@ -175,27 +167,18 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       content: input,
     });
 
-    console.log(`[chat][${reqId}] 📝 Saved user message, calling plan() ...`);
+    console.log(`[chat] 📝 Saved user message, calling plan() ...`);
 
-    const planStart = Date.now();
     // Pass prior messages to retain context (exclude the one we just added)
     const stream = await plan(input, messages, async (response) => {
       // -------------------------------------------------------------
       //  STREAM CALLBACK – fires for *each* chunk/tool call returned
       // -------------------------------------------------------------
-      console.log(
-        `[chat][${reqId}] 📡 Stream callback invoked | keys=${Object.keys(
-          response,
-        ).join(',')} | hasText=${Boolean(response.text)} | hasContent=${Boolean(
-          response.content,
-        )}`,
-      );
+      console.log("[chat] 📡 Stream callback invoked");
 
       if (threadId && response.text) {
         try {
-          console.log(
-            `[chat][${reqId}] 💾 Saving assistant message (threadId=${threadId})`,
-          );
+          console.log(`[chat] 💾 Saving assistant message (threadId=${threadId})`);
           await addMessage({
             threadId,
             role: 'assistant',
@@ -204,40 +187,20 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
             tokensCompletion: response.usage?.outputTokens,
             costUsd: response.usage?.totalTokens ? response.usage.totalTokens * 0.00001 : undefined, // Adjust cost calculation as needed
           });
-          console.log(
-            `[chat][${reqId}] ✅ Assistant message saved successfully`,
-          );
+          console.log(`[chat] ✅ Assistant message saved successfully`);
         } catch (error) {
           console.error('Error saving assistant message:', error);
         }
       }
     });
 
-    console.log(
-      `[chat][${reqId}] ✅ plan() resolved in ${
-        Date.now() - planStart
-      }ms, streaming response back to client`,
-    );
-
-    // Log when streaming completes (best-effort: after response flushed)
-    res.on('finish', () => {
-      console.log(
-        `[chat][${reqId}] 🏁 Streaming response completed in ${
-          Date.now() - startTs
-        }ms`,
-      );
-    });
+    console.log("[chat] ✅ plan() resolved");
 
     // UIMessageStreamResponse from AI SDK
     return stream.toUIMessageStreamResponse();
 
   } catch (err: any) {
-    console.error(
-      `[chat] 🛑 Error handling chat request after ${
-        Date.now() - (err?.startTs || Date.now())
-      }ms\n`,
-      err,
-    );
+    console.error("[chat] 🛑 Error handling chat request:", err.message);
     return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
   }
 });
