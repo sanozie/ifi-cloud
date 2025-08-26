@@ -229,9 +229,11 @@ struct ThreadDetailView: View {
         // ----------------------------------------------------------
         // Prevent duplicate API calls
         // – Bail out if a load is already in progress
-        // – Or if we have already loaded this exact thread
+        //   *and* we have already loaded this exact thread.
+        //   This still allows the initial load (where `thread == nil`)
+        //   even though `isLoading` starts as `true`.
         // ----------------------------------------------------------
-        if isLoading || thread?.id == threadId {
+        if (isLoading && thread?.id == threadId) {
             return
         }
 

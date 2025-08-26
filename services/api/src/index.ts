@@ -176,11 +176,11 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       // -------------------------------------------------------------
       console.log("[chat] 📡 Stream callback invoked");
 
-      if (threadId && response.text) {
+      if (response.text) {
         try {
-          console.log(`[chat] 💾 Saving assistant message (threadId=${threadId})`);
+          console.log(`[chat] 💾 Saving assistant message (threadId=${thread.id})`);
           await addMessage({
-            threadId,
+            threadId: thread.id,
             role: 'assistant',
             content: response.text + '\n' + response.content,
             tokensPrompt: response.usage?.inputTokens,

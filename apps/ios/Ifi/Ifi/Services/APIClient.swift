@@ -121,6 +121,17 @@ struct StreamChunk: Decodable {
     }
 }
 
+/// Vercel AI SDK stream format
+struct VercelStreamChunk: Decodable {
+    let text: String?
+    let content: String?
+    let done: Bool?
+    
+    // Additional fields that might be present in Vercel AI SDK response
+    let type: String?
+    let message: String?
+}
+
 /// Protocol for handling streamed message chunks
 protocol StreamHandler {
     func handleChunk(_ text: String)
@@ -488,33 +499,64 @@ class APIClient: NSObject {
 
 extension APIClient: URLSessionDataDelegate {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        // Process SSE data
+        // Process the streaming data
         guard let text = String(data: data, encoding: .utf8) else {
             streamPublisher?.send(completion: .failure(APIError.invalidResponse))
             return
         }
         
-        // Split the response by "data:" prefix (SSE format)
-        let lines = text.components(separatedBy: "data: ")
+        // Split the response by newlines to handle JSON chunks
+        let lines = text.components(separatedBy: .newlines)
         
         for line in lines {
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedLine.isEmpty && trimmedLine != "[DONE]" {
-                // Parse the JSON chunk
-                if let data = trimmedLine.data(using: .utf8) {
+            if trimmedLine.isEmpty {
+                continue
+            }
+            
+            #if DEBUG
+            print("[APIClient] Stream chunk: \(trimmedLine)")
+            #endif
+            
+            // Check for completion markers
+            if trimmedLine == "[DONE]" || trimmedLine.contains("\"done\":true") {
+                streamPublisher?.send(completion: .finished)
+                continue
+            }
+            
+            // Try to parse as Vercel AI SDK format first
+            if let data = trimmedLine.data(using: .utf8) {
+                do {
+                    let vercelChunk = try JSONDecoder().decode(VercelStreamChunk.self, from: data)
+                    
+                    // Extract content from Vercel AI SDK format
+                    if let text = vercelChunk.text {
+                        streamPublisher?.send(text)
+                        continue
+                    } else if let content = vercelChunk.content {
+                        streamPublisher?.send(content)
+                        continue
+                    }
+                    
+                    // Check for completion
+                    if vercelChunk.done == true {
+                        streamPublisher?.send(completion: .finished)
+                        continue
+                    }
+                } catch {
+                    // Failed to parse as Vercel format, try OpenAI format
                     do {
-                        let chunk = try JSONDecoder().decode(StreamChunk.self, from: data)
-                        if let content = chunk.choices?.first?.delta?.content {
+                        let openAIChunk = try JSONDecoder().decode(StreamChunk.self, from: data)
+                        if let content = openAIChunk.choices?.first?.delta?.content {
                             streamPublisher?.send(content)
+                            continue
                         }
                     } catch {
-                        // If we can't decode as StreamChunk, just send the raw text
-                        // This handles different formats that might come from Vercel AI SDK
+                        // If both parsing attempts fail, just send the raw text
+                        // This is a fallback for any other format
                         streamPublisher?.send(trimmedLine)
                     }
                 }
-            } else if trimmedLine == "[DONE]" {
-                streamPublisher?.send(completion: .finished)
             }
         }
     }
