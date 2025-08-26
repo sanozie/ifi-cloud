@@ -88,15 +88,22 @@ struct ChatView: View {
                         .id(message.id)
                 }
                 
-                // Streaming response bubble (if active)
-                if !viewModel.streamContent.items.isEmpty {
-                    // Render structured streaming content using the new renderer
-                    StreamContentView(content: viewModel.streamContent)
-                        .id(typingIndicatorId)
-                }
-                
-                // Typing indicator (when loading)
-                if viewModel.isLoading {
+                // Streaming / typing indicator logic
+                if viewModel.isStreaming {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Render streamed content (if any)
+                        if !viewModel.streamContent.items.isEmpty {
+                            StreamContentView(content: viewModel.streamContent)
+                        }
+                        
+                        // Show typing indicator while loading *or* until first chunk arrives
+                        if viewModel.isLoading || viewModel.streamContent.items.isEmpty {
+                            TypingIndicator()
+                        }
+                    }
+                    .id(typingIndicatorId)
+                } else if viewModel.isLoading {
+                    // Initial load (non-streaming) typing indicator
                     TypingIndicator()
                         .id(typingIndicatorId)
                 }

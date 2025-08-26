@@ -19,7 +19,8 @@ final class StreamController {
     /// Any parsing errors are collected and logged through the error notification system.
     lazy var output: some Publisher<StreamContent, Never> = {
         $input
-            .throttle(for: .milliseconds(8), scheduler: DispatchQueue.main, latest: true)
+            // Reduce throttling delay for snappier UI updates
+            .throttle(for: .milliseconds(2), scheduler: DispatchQueue.main, latest: true)
             .receive(on: DispatchQueue.global())
             .map { buffer in
                 #if DEBUG

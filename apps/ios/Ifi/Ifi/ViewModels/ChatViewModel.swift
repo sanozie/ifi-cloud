@@ -227,11 +227,6 @@ final class ChatViewModel {
     /// Handle a new stream content update
     /// - Parameter content: The updated stream content
     private func handleStreamContent(_ content: StreamContent) {
-        // Ignore the *initial* empty emission from `StreamController`
-        // (no items and not marked finished) that would otherwise
-        // flip `isStreaming` to `true` and disable the Send button.
-        guard !(content.items.isEmpty && content.finished == false) else { return }
-
 #if DEBUG
         print("[STREAM-DEBUG] 📥 handleStreamContent() – items=\(content.items.count) finished=\(content.finished)")
 #endif
