@@ -411,7 +411,7 @@ class APIClient: NSObject {
         print("[APIClient] fetchThread called with id: \(id)")
         #endif
 
-        let endpoint = "/v1/threads/\(id)"
+        let endpoint = "/v1/thread/\(id)"
         guard let url = URL(string: endpoint, relativeTo: baseURL) else {
             throw APIError.invalidURL
         }
@@ -464,7 +464,7 @@ class APIClient: NSObject {
 
     /// Delete a thread
     func deleteThread(id: String) async throws {
-        let endpoint = "/v1/threads/\(id)"
+        let endpoint = "/v1/thread/\(id)"
         guard let url = URL(string: endpoint, relativeTo: baseURL) else {
             throw APIError.invalidURL
         }

@@ -248,7 +248,7 @@ app.get('/v1/threads', async (_req: Request, res: Response) => {
 });
 
 // GET /v1/threads/:id – full thread with messages
-app.get('/v1/threads/:id', async (req: Request, res: Response) => {
+app.get('/v1/thread/:id', async (req: Request, res: Response) => {
   console.log(`[thread] ▶️  Incoming /v1/threads/:id`);
   try {
     const { id } = req.params;
@@ -282,7 +282,7 @@ app.get('/v1/threads/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /v1/threads/:id – delete thread and its messages
-app.delete('/v1/threads/:id', async (req: Request, res: Response) => {
+app.delete('/v1/thread/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
