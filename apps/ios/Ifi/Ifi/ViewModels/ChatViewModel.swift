@@ -240,11 +240,13 @@ final class ChatViewModel {
         }
         
         // Update streaming flag only for meaningful updates
-        // Only flip the streaming flag when we *actually* have content flowing or
-        // we are already mid-stream.  
-        // This prevents the UI from showing the typing indicator on the initial
-        // empty emission that `StreamController` sends on startup / reset.
-        if !content.items.isEmpty || (!content.finished && isStreaming) {
+        // Flip the streaming flag whenever the content is **not** truly “empty & finished”.
+        //  • If we have items → we are clearly mid-stream.  
+        //  • If `finished == false`  → the stream is still active even if the next chunk
+        //    hasn’t produced items yet (e.g. markdown split across chunks).  
+        // This still ignores the very first empty `finished == true` emission that
+        // StreamController publishes on reset/start-up, preventing stray indicators.
+        if !content.items.isEmpty || !content.finished {
             isStreaming = !content.finished
         }
         
