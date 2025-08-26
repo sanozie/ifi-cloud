@@ -1,8 +1,8 @@
 //
-//  ChatViewModel.swift
+//  ChatViewModelNew.swift
 //  Ifi
 //
-//  Created on 8/25/25.
+//  Created on 8/26/25.
 //
 
 import Foundation
@@ -51,8 +51,8 @@ struct ChatMessageViewModel: Identifiable {
     }
 }
 
-/// Represents the role of a message sender
-enum MessageRole: String, Codable {
+/// Message roles
+enum MessageRole: String {
     case user
     case assistant
     case system
@@ -60,30 +60,31 @@ enum MessageRole: String, Codable {
 }
 
 /// ViewModel responsible for managing chat state and interactions
+@MainActor
 @Observable
 final class ChatViewModel {
-    // MARK: - Published Properties
+    // MARK: - Public Properties
     
-    /// Current messages in the active thread
-    var messages: [ChatMessageViewModel] = []
-    
-    /// Text being composed by the user
+    /// Current user input text
     var inputText: String = ""
     
-    /// Loading state for the chat interface
+    /// List of messages in the conversation
+    var messages: [ChatMessageViewModel] = []
+    
+    /// Whether the chat is currently loading
     var isLoading: Bool = false
     
-    /// Error message to display, if any
+    /// Whether a response is currently streaming
+    var isStreaming: Bool = false
+    
+    /// Error message to display
     var errorMessage: String? = nil
     
-    /// Whether an error alert should be shown
+    /// Whether to show the error alert
     var showError: Bool = false
     
-    /// The current streaming response text (before it's committed as a message)
-    var streamingResponse: String = ""
-    
-    /// Whether the assistant is currently streaming a response
-    var isStreaming: Bool = false
+    /// The structured stream content for the current response
+    var streamContent: StreamContent = StreamContent()
     
     /// The active chat thread
     var currentThread: ThreadWithMessages?
@@ -92,6 +93,9 @@ final class ChatViewModel {
     
     /// API client for network requests
     private let apiClient: APIClient
+    
+    /// Stream controller for managing content streaming
+    private let streamController = StreamController()
     
     /// Set of cancellables for managing Combine subscriptions
     private var cancellables = Set<AnyCancellable>()
@@ -103,12 +107,26 @@ final class ChatViewModel {
     ///   - apiClient: The API client for network requests
     init(apiClient: APIClient) {
         self.apiClient = apiClient
+        
+        // Subscribe to the stream controller's output
+        streamController.output
+            .sink { [weak self] content in
+                self?.handleStreamContent(content)
+            }
+            .store(in: &cancellables)
+        
+        // Subscribe to error notifications
+        streamController.errorPublisher()
+            .sink { [weak self] error in
+                self?.handleStreamError(error)
+            }
+            .store(in: &cancellables)
     }
     
     // MARK: - Public Methods
     
     /// Load a thread by ID
-    /// - Parameter threadId: The ID of the thread to load
+    /// - Parameter id: The ID of the thread to load
     @MainActor
     func loadThread(id: String) async {
         isLoading = true
@@ -129,31 +147,25 @@ final class ChatViewModel {
         
         isLoading = false
     }
-
+    
     // MARK: - Refresh Support
-    /// Reload the currently-open thread from the API.
-    ///  – Gracefully does nothing when no active thread is set.
-    ///  – Mirrors `loadThread(id:)` behaviour for loading / error handling.
+    
+    /// Reload the currently-open thread from the API
+    ///  – Gracefully does nothing when no active thread is set
+    ///  – Mirrors `loadThread(id:)` behaviour for loading / error handling
     @MainActor
     func refresh() async {
         // Ensure we actually have a thread to refresh
         guard let threadId = currentThread?.id else { return }
-
+        
         // Show a temporary loading indicator
         isLoading = true
         errorMessage = nil
-
-        do {
-            await loadThread(id: threadId)
-        } catch {
-            // `loadThread` already wraps its own `do/catch` but this is
-            // defensive in case its implementation changes.
-            handleInternalError(error)
-        }
+        
+        await loadThread(id: threadId)
     }
     
     /// Send a message and handle the response
-    /// - Parameter text: The message text to send
     func sendMessage() {
         guard !inputText.isEmpty else { return }
         guard !isLoading && !isStreaming else { return }
@@ -166,18 +178,21 @@ final class ChatViewModel {
         isLoading = true
         errorMessage = nil
         
+        // Reset stream controller
+        streamController.reset()
+        streamContent = StreamContent()
+        
         // Get thread ID if available
         let threadId = currentThread?.id
         
-        // Add user message to the UI immediately
+        // Add the user message to the UI
         let userMessage = ChatMessageViewModel(
             content: messageText,
             role: .user
         )
         messages.append(userMessage)
         
-        // Create a placeholder for the assistant's response
-        streamingResponse = ""
+        // Set streaming state
         isStreaming = true
         
         // Send the message to the API
@@ -193,31 +208,45 @@ final class ChatViewModel {
         apiClient.cancelCurrentRequest()
         isStreaming = false
         
-        // If we have partial streaming response, add it to the UI
-        if !streamingResponse.isEmpty {
-            let assistantMessage = ChatMessageViewModel(
-                content: streamingResponse,
-                role: .assistant
-            )
-            messages.append(assistantMessage)
-            streamingResponse = ""
+        // If we have partial content, add it to the UI
+        if !streamContent.items.isEmpty {
+            commitStreamingResponse()
         }
-    }
-    
-    /// Retry sending the last user message
-    func retryLastMessage() {
-        guard let lastUserMessage = messages.last(where: { $0.role == .user }) else {
-            return
-        }
-        
-        // Set the input text to the last user message and send it
-        inputText = lastUserMessage.content
-        sendMessage()
     }
     
     // MARK: - Private Methods
     
-    /// Handle an error
+    /// Handle a new stream content update
+    /// - Parameter content: The updated stream content
+    private func handleStreamContent(_ content: StreamContent) {
+        streamContent = content
+        
+        // Update UI state based on content
+        if isLoading {
+            isLoading = false
+        }
+        
+        isStreaming = !content.finished
+        
+        // If streaming is complete, commit the response
+        if content.finished {
+            commitStreamingResponse()
+        }
+    }
+    
+    /// Handle a stream error
+    /// - Parameter error: The error that occurred
+    private func handleStreamError(_ error: IdentifiableError) {
+        // Log the error
+        print("Stream error: \(error.localizedDescription)")
+        
+        // Only show UI errors for critical failures
+        if !isStreaming || streamContent.items.isEmpty {
+            handleInternalError(error.underlyingError)
+        }
+    }
+    
+    /// Handle internal errors
     /// - Parameter error: The error to handle
     private func handleInternalError(_ error: Error) {
         isLoading = false
@@ -233,24 +262,38 @@ final class ChatViewModel {
         showError = true
     }
     
-    /// Commit the streaming response as a permanent message in the UI
+    /// Commit the current streaming response as a permanent message
     private func commitStreamingResponse() {
-        guard !streamingResponse.isEmpty else { return }
+        // Skip if there's no content
+        guard !streamContent.items.isEmpty else { return }
+        
+        // Extract the markdown content from stream items
+        var responseText = ""
+        
+        for item in streamContent.items {
+            switch item.value {
+            case .markdown(let entry):
+                responseText += entry.content
+            case .markdownTable(let table):
+                responseText += table.content
+            case .codeBlock(let codeBlock):
+                responseText += "```\(codeBlock.language ?? "")\n\(codeBlock.code)\n```"
+            case .xml:
+                // Skip XML content
+                break
+            }
+        }
         
         // Add the assistant message to the UI
         let assistantMessage = ChatMessageViewModel(
-            content: streamingResponse,
+            content: responseText,
             role: .assistant
         )
         messages.append(assistantMessage)
-        streamingResponse = ""
         
-        // Refresh the thread to get the latest messages
-        if let threadId = currentThread?.id {
-            Task {
-                await loadThread(id: threadId)
-            }
-        }
+        // Reset streaming state
+        streamContent = StreamContent()
+        isStreaming = false
     }
 }
 
@@ -258,46 +301,32 @@ final class ChatViewModel {
 
 extension ChatViewModel: StreamHandler {
     func handleChunk(_ text: String) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            // Append the chunk to the streaming response
-            self.streamingResponse += text
-            
-            // Ensure loading state is false once streaming starts
-            if self.isLoading {
-                self.isLoading = false
-            }
-            
-            // Ensure streaming flag is set
-            self.isStreaming = true
-        }
+        // Process the chunk through the stream controller
+        streamController.processChunk(text)
+        
+        // Ensure streaming flag is set
+        isStreaming = true
     }
     
     func handleCompletion() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            // Commit the streaming response as a permanent message
-            self.commitStreamingResponse()
-            
-            // Reset states
-            self.isLoading = false
-            self.isStreaming = false
-        }
+        // Mark the stream as finished
+        isStreaming = false
     }
     
     func handleError(_ error: Error) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            
-            // If we have partial streaming response, add it to the UI
-            if !self.streamingResponse.isEmpty {
-                self.commitStreamingResponse()
-            }
-            
-            // Handle the error
-            self.handleInternalError(error)
+        // Add the error to the stream controller
+        streamController.addError(error)
+        
+        // If we have partial content, add it to the UI
+        if !streamContent.items.isEmpty {
+            commitStreamingResponse()
         }
+        
+        // Reset states
+        isLoading = false
+        isStreaming = false
+        
+        // Handle the error
+        handleInternalError(error)
     }
 }

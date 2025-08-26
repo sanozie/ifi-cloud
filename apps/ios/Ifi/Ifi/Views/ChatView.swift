@@ -71,9 +71,6 @@ struct ChatView: View {
             }
         }
         .alert("Error", isPresented: $viewModel.showError) {
-            Button("Retry") {
-                viewModel.retryLastMessage()
-            }
             Button("Dismiss", role: .cancel) { }
         } message: {
             Text(viewModel.errorMessage ?? "An unknown error occurred")
@@ -91,16 +88,10 @@ struct ChatView: View {
                 }
                 
                 // Streaming response bubble (if active)
-                if !viewModel.streamingResponse.isEmpty {
-                    MessageBubble(
-                        message: ChatMessageViewModel(
-                            content: viewModel.streamingResponse,
-                            role: .assistant
-                        ),
-                        isStreaming: true,
-                        colorScheme: colorScheme
-                    )
-                    .id(typingIndicatorId)
+                if !viewModel.streamContent.items.isEmpty {
+                    // Render structured streaming content using the new renderer
+                    StreamContentView(content: viewModel.streamContent)
+                        .id(typingIndicatorId)
                 }
                 
                 // Typing indicator (when loading)
@@ -131,7 +122,7 @@ struct ChatView: View {
         .onChange(of: viewModel.messages.count) { 
             scrollToBottom()
         }
-        .onChange(of: viewModel.streamingResponse) { 
+        .onChange(of: viewModel.streamContent.items.count) { _ in
             scrollToBottom()
         }
         .onChange(of: viewModel.isLoading) { 
