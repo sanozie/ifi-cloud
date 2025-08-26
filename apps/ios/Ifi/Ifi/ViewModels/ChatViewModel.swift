@@ -240,12 +240,16 @@ final class ChatViewModel {
         }
         
         // Update streaming flag only for meaningful updates
-        // Only update streaming state when we actually receive content.
-        // This prevents the pending-message indicator from showing on the initial
-        // empty emission that StreamController publishes on startup / reset,
-        // while still enabling real-time updates once text begins to stream.
+        // Always update streaming state when we have content items.
+        // This guarantees that the UI displays the final chunks even if
+        // `handleCompletion()` flipped the flag off moments before.
         if !content.items.isEmpty {
             isStreaming = !content.finished
+        } else if content.items.isEmpty && content.finished {
+            // Handle the special “startup” case where the stream controller
+            // publishes an initial empty-&-finished payload: ensure we *do not*
+            // show the typing indicator in that scenario.
+            isStreaming = false
         }
         
         // If streaming is complete, commit the response
