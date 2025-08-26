@@ -10,7 +10,6 @@ import {
   getThreadSpecs,
   updateThreadState,
   createUpdateSpec,
-  upsertDeviceToken,
 } from '@ifi/db';
 import {
   plan,
@@ -438,33 +437,6 @@ app.post('/v1/threads/:id/transition', async (req: Request, res: Response) => {
     return res.status(200).json(thread);
   } catch (err) {
     console.error('POST /v1/threads/:id/transition error:', err);
-    return res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// POST /v1/notifications/device-token
-app.post('/v1/notifications/device-token', async (req: Request, res: Response) => {
-  try {
-    const { token, platform = 'web' } = req.body || {};
-    const userId = req.body.userId || req.headers['x-user-id'] as string;
-
-    if (!token || !userId) {
-      return res.status(400).json({ error: 'token and userId are required' });
-    }
-
-    if (platform !== 'web') {
-      return res.status(400).json({ error: 'only web platform is supported in Iteration 1' });
-    }
-
-    await upsertDeviceToken({
-      userId,
-      platform: 'web',
-      token,
-    });
-
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('POST /v1/notifications/device-token error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
