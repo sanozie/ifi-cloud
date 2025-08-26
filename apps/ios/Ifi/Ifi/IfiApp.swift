@@ -12,7 +12,7 @@ struct IfiApp: App {
     // MARK: - Dependencies
 
     /// Shared API client for the lifetime of the app
-    private let apiClient = APIClient(baseURLString: "http://api.ifiai.app")
+    private let apiClient = APIClient(baseURLString: "https://api.ifiai.app")
 
     var body: some Scene {
         WindowGroup {
