@@ -196,7 +196,9 @@ struct ChatView: View {
                         .foregroundColor(.accentColor)
                         .contentShape(Circle())
                 }
-                .disabled(viewModel.inputText.isEmpty || viewModel.isLoading || viewModel.isStreaming)
+                // Disable only while the current request is being sent (`isLoading`)
+                // so users can queue another message while a previous one is still streaming.
+                .disabled(viewModel.inputText.isEmpty || viewModel.isLoading)
                 .opacity(viewModel.inputText.isEmpty ? 0.5 : 1.0)
                 .accessibilityLabel("Send message")
                 .buttonStyle(.plain)
