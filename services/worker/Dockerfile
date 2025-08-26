@@ -9,7 +9,7 @@ COPY packages ./packages
 COPY services ./services
 
 # Install deps
-RUN yarn install
+RUN yarn install --immutable
 
 # Generate Prisma client and build workspaces
 RUN yarn workspace @ifi/db prisma generate
