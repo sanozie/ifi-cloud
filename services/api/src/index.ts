@@ -193,7 +193,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       }
     });
 
-    console.log("[chat] ✅ plan() resolved")
+    console.log("[chat] ✅ plan() resolved");
 
     /* ------------------------------------------------------------------
      *  STREAM RESPONSE – forward AI chunks to the client (Express)
