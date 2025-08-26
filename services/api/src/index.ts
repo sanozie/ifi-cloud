@@ -233,7 +233,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
   } catch (err: any) {
     console.error(
-      `[chat][${reqId}] 🛑 Error handling chat request after ${
+      `[chat] 🛑 Error handling chat request after ${
         Date.now() - (err?.startTs || Date.now())
       }ms\n`,
       err,
