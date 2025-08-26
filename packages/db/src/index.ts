@@ -319,7 +319,7 @@ export function createPullRequestRow(params: {
  */
 export function upsertDeviceToken(params: {
   userId: string;
-  platform: 'ios';
+  platform: 'web';
   token: string;
 }) {
   return prisma.deviceToken.upsert({

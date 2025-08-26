@@ -445,20 +445,20 @@ app.post('/v1/threads/:id/transition', async (req: Request, res: Response) => {
 // POST /v1/notifications/device-token
 app.post('/v1/notifications/device-token', async (req: Request, res: Response) => {
   try {
-    const { token, platform = 'ios' } = req.body || {};
+    const { token, platform = 'web' } = req.body || {};
     const userId = req.body.userId || req.headers['x-user-id'] as string;
 
     if (!token || !userId) {
       return res.status(400).json({ error: 'token and userId are required' });
     }
 
-    if (platform !== 'ios') {
-      return res.status(400).json({ error: 'only ios platform is supported in Iteration 1' });
+    if (platform !== 'web') {
+      return res.status(400).json({ error: 'only web platform is supported in Iteration 1' });
     }
 
     await upsertDeviceToken({
       userId,
-      platform: 'ios',
+      platform: 'web',
       token,
     });
 

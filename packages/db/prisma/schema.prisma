@@ -15,16 +15,16 @@ datasource db {
 }
 
 model Thread {
-  id        String   @id @default(cuid())
-  title     String
+  id              String   @id @default(cuid())
+  title           String
   // New lifecycle state for multi-spec workflow
   // planning | working | waiting_for_feedback | archived
-  state     String   @default("planning")
+  state           String   @default("planning")
   // Track the active PR (if any) so planner can fetch / update it
   currentPrBranch String?
   currentPrUrl    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Relations
   messages   Message[]
@@ -57,17 +57,17 @@ model Message {
 }
 
 model Spec {
-  id        String   @id @default(cuid())
-  threadId  String
-  version   Int      @default(1)
-  title     String
-  content   String   @db.Text
+  id           String   @id @default(cuid())
+  threadId     String
+  version      Int      @default(1)
+  title        String
+  content      String   @db.Text
   // initial | update
   specType     String   @default("initial")
   // Branch this spec targets (e.g. feature branch of open PR)
   targetBranch String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
   thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
@@ -130,12 +130,4 @@ model PullRequest {
 
   @@index([jobId])
   @@index([status])
-}
-
-model DeviceToken {
-  id         String    @id @default(cuid())
-  platform   String    @default("ios")
-  token      String    @unique
-  createdAt  DateTime  @default(now())
-  lastSeenAt DateTime?
 }
