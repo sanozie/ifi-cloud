@@ -211,7 +211,9 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
 // GET /v1/threads – list all threads with last-message preview
 app.get('/v1/threads', async (_req: Request, res: Response) => {
+  console.log(`[threads] ▶️  Incoming /v1/threads`);
   try {
+    console.log(`[threads] 📂 Loaded existing threads`);
     const threads = await prisma.thread.findMany({
       orderBy: { updatedAt: 'desc' },
       include: {
@@ -237,6 +239,7 @@ app.get('/v1/threads', async (_req: Request, res: Response) => {
         : null,
     }));
 
+    console.log(`[threads] 📂 returning ${payload.length} threads`);
     return res.status(200).json(payload);
   } catch (err) {
     console.error('GET /v1/threads error:', err);
@@ -246,8 +249,10 @@ app.get('/v1/threads', async (_req: Request, res: Response) => {
 
 // GET /v1/threads/:id – full thread with messages
 app.get('/v1/threads/:id', async (req: Request, res: Response) => {
+  console.log(`[thread] ▶️  Incoming /v1/threads/:id`);
   try {
     const { id } = req.params;
+    console.log(`[thread] ▶️  Requesting thread ${id}`)
     const thread = await getThread(id);
 
     if (!thread) {
@@ -268,6 +273,7 @@ app.get('/v1/threads/:id', async (req: Request, res: Response) => {
       })),
     };
 
+    console.log(`[thread] ▶️  Returning thread ${id}`)
     return res.status(200).json(payload);
   } catch (err) {
     console.error('GET /v1/threads/:id error:', err);
