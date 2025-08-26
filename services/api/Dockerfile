@@ -10,7 +10,7 @@ COPY services ./services
 
 # Install deps
 # Immutable install for reproducible builds
-RUN yarn install --immutable
+RUN yarn install
 
 # Generate Prisma client, then build all workspaces topologically and focus
 RUN yarn workspace @ifi/db prisma generate
