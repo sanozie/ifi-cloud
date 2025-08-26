@@ -314,27 +314,6 @@ export function createPullRequestRow(params: {
   return prisma.pullRequest.create({ data: params });
 }
 
-/**
- * Device token upsert
- */
-export function upsertDeviceToken(params: {
-  userId: string;
-  platform: 'ios';
-  token: string;
-}) {
-  return prisma.deviceToken.upsert({
-    where: { token: params.token },
-    update: {
-      lastSeenAt: new Date(),
-    },
-    create: {
-      platform: params.platform,
-      token: params.token,
-      lastSeenAt: new Date(),
-    },
-  });
-}
-
 export * from '@prisma/client';
 
 /**
