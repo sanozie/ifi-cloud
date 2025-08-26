@@ -89,21 +89,14 @@ struct ChatView: View {
                 }
                 
                 // Streaming / typing indicator logic
-                if viewModel.isStreaming {
-                    VStack(alignment: .leading, spacing: 8) {
-                        // Render streamed content (if any)
-                        if !viewModel.streamContent.items.isEmpty {
-                            StreamContentView(content: viewModel.streamContent)
-                        }
-                        
-                        // Show typing indicator while loading *or* until first chunk arrives
-                        if viewModel.isLoading {
-                            TypingIndicator()
-                        }
-                    }
-                    .id(typingIndicatorId)
-                } else if viewModel.isLoading {
-                    // Initial load (non-streaming) typing indicator
+                // Show streaming content when available
+                if viewModel.isStreaming && !viewModel.streamContent.items.isEmpty {
+                    StreamContentView(content: viewModel.streamContent)
+                        .id(typingIndicatorId)
+                }
+
+                // Show typing indicator while request is loading
+                if viewModel.isLoading {
                     TypingIndicator()
                         .id(typingIndicatorId)
                 }
