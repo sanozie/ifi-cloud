@@ -131,6 +131,8 @@ final class ChatViewModel {
     func loadThread(id: String) async {
         isLoading = true
         errorMessage = nil
+        // Always reset loading state on exit – success, failure, or cancellation
+        defer { isLoading = false }
         
         do {
             // Fetch the thread from the API
@@ -144,8 +146,6 @@ final class ChatViewModel {
         } catch {
             handleInternalError(error)
         }
-        
-        isLoading = false
     }
     
     // MARK: - Refresh Support

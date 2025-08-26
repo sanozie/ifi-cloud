@@ -75,6 +75,7 @@ struct ChatView: View {
         } message: {
             Text(viewModel.errorMessage ?? "An unknown error occurred")
         }
+        // No debug logging in production code
     }
     
     // MARK: - Message List
@@ -165,7 +166,8 @@ struct ChatView: View {
                                 attributes: [.font: UIFont.preferredFont(forTextStyle: .body)],
                                 context: nil
                             ).height + 24
-                            
+
+                            // Clamp input height between min/max bounds
                             messageInputHeight = min(
                                 max(estimatedHeight, minInputHeight),
                                 maxInputHeight
