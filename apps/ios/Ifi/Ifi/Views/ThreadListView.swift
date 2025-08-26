@@ -200,9 +200,6 @@ struct ThreadDetailView: View {
                 } else {
                     ProgressView("Preparing chat…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .task {
-                            await prepareChatViewModel(with: thread)
-                        }
                 }
             } else if isLoading {
                 ProgressView("Loading conversation...")
@@ -229,11 +226,26 @@ struct ThreadDetailView: View {
     
     @MainActor
     private func loadThread() async {
+        // ----------------------------------------------------------
+        // Prevent duplicate API calls
+        // – Bail out if a load is already in progress
+        // – Or if we have already loaded this exact thread
+        // ----------------------------------------------------------
+        if isLoading || thread?.id == threadId {
+            return
+        }
+
         isLoading = true
         errorMessage = nil
         
         do {
             thread = try await apiClient.fetchThread(id: threadId)
+            // Lazily create ChatViewModel after thread meta is fetched
+            if let thread = thread, chatViewModel == nil {
+                let vm = ChatViewModel(apiClient: apiClient)
+                chatViewModel = vm
+                await vm.loadThread(id: thread.id)
+            }
         } catch {
             if let apiError = error as? APIError {
                 errorMessage = apiError.localizedDescription
@@ -245,15 +257,6 @@ struct ThreadDetailView: View {
         isLoading = false
     }
 
-    /// Create the ChatViewModel and load messages once thread meta is fetched
-    @MainActor
-    private func prepareChatViewModel(with thread: ThreadWithMessages) async {
-        // Prevent duplicate creation on multiple task invocations
-        guard chatViewModel == nil else { return }
-        let vm = ChatViewModel(apiClient: apiClient)
-        chatViewModel = vm
-        await vm.loadThread(id: thread.id)
-    }
 }
 
 // MARK: - Preview

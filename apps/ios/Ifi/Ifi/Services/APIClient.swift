@@ -157,6 +157,39 @@ class APIClient: NSObject {
     /// Cancellable storage for stream subscriptions
     private var cancellables = Set<AnyCancellable>()
     
+    // MARK: - Date Formatters (ISO-8601 Helper)
+    /// A small set of reusable `ISO8601DateFormatter`s that accept
+    /// second-precision and millisecond-precision timestamps.  
+    /// These are consulted (in order) by our custom `dateDecodingStrategy`
+    /// to ensure the client can tolerate either format returned by the API.
+    ///
+    ///  • `yyyy-MM-dd'T'HH:mm:ssZ`  
+    ///  • `yyyy-MM-dd'T'HH:mm:ss.SSSZ`
+    ///
+    /// Additional sub-millisecond precision is also handled because the
+    /// formatter with `.withFractionalSeconds` will parse any fractional
+    /// length up to 6 digits.
+    static let iso8601Formatters: [ISO8601DateFormatter] = {
+        // Base options common to both variants
+        let base: ISO8601DateFormatter.Options = [
+            .withInternetDateTime,
+            .withDashSeparatorInDate,
+            .withColonSeparatorInTimeZone
+        ]
+        
+        func make(_ extra: ISO8601DateFormatter.Options = []) -> ISO8601DateFormatter {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = base.union(extra)
+            f.timeZone = .init(secondsFromGMT: 0)   // always UTC
+            return f
+        }
+        
+        return [
+            make(),                               // no fractional seconds
+            make(.withFractionalSeconds)          // milliseconds / microseconds
+        ]
+    }()
+    
     // MARK: - Initialization
     
     /// Initialize with a custom base URL
@@ -335,7 +368,20 @@ class APIClient: NSObject {
             }
 
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            // Accept both second-precision and millisecond-precision ISO-8601 dates
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let raw = try container.decode(String.self)
+                for fmt in APIClient.iso8601Formatters {
+                    if let date = fmt.date(from: raw) {
+                        return date
+                    }
+                }
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Expected ISO8601 date string, got \(raw)"
+                )
+            }
             
             // ---------------------------------------------------------
             // Debug aid: Log raw response to diagnose decoding issues
@@ -358,10 +404,21 @@ class APIClient: NSObject {
 
     /// Fetch a single thread with all messages
     func fetchThread(id: String) async throws -> ThreadWithMessages {
+        // ---------------------------------------------------------
+        // Debug: log entry into method
+        // ---------------------------------------------------------
+        #if DEBUG
+        print("[APIClient] fetchThread called with id: \(id)")
+        #endif
+
         let endpoint = "/v1/threads/\(id)"
         guard let url = URL(string: endpoint, relativeTo: baseURL) else {
             throw APIError.invalidURL
         }
+
+        #if DEBUG
+        print("[APIClient] fetchThread requesting URL: \(url.absoluteString)")
+        #endif
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -378,11 +435,29 @@ class APIClient: NSObject {
             }
 
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let raw = try container.decode(String.self)
+                for fmt in APIClient.iso8601Formatters {
+                    if let date = fmt.date(from: raw) {
+                        return date
+                    }
+                }
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Expected ISO8601 date string, got \(raw)"
+                )
+            }
             return try decoder.decode(ThreadWithMessages.self, from: data)
         } catch let decodingError as DecodingError {
+            #if DEBUG
+            print("[APIClient] fetchThread DecodingError: \(decodingError)")
+            #endif
             throw APIError.decodingFailed(decodingError)
         } catch {
+            #if DEBUG
+            print("[APIClient] fetchThread requestFailed error: \(error.localizedDescription)")
+            #endif
             throw APIError.requestFailed(error)
         }
     }

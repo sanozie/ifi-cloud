@@ -287,7 +287,41 @@ export async function plan(
   config: Partial<ProviderConfig> = {}
 ) {
   try {
+    // ------------------------------------------------------------------
+    // Trace helpers
+    // ------------------------------------------------------------------
+    const planId = `plan-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .substring(2, 6)}`;
+    const ts = () => new Date().toISOString();
+
     const mergedConfig = { ...defaultConfig, ...config };
+
+    /* --------------------------------------------------------------- */
+    /* 1)  Function entry                                              */
+    /* --------------------------------------------------------------- */
+    console.log(
+      `[plan][${planId}] ▶️  ENTER | ts=${ts()} | prompt="${prompt.slice(
+        0,
+        60,
+      )}..." | prevMsgCount=${previousMessages?.length ?? 0}`,
+    );
+
+    /* --------------------------------------------------------------- */
+    /* 2)  Environment / API-key checks                                */
+    /* --------------------------------------------------------------- */
+    console.log(
+      `[plan][${planId}] 🔑 Keys present: OPENROUTER_API_KEY=${
+        process.env.OPENROUTER_API_KEY ? '✅' : '❌'
+      }  | OPENAI_API_KEY=${process.env.OPENAI_API_KEY ? '✅' : '❌'}`,
+    );
+
+    /* --------------------------------------------------------------- */
+    /* 3)  Model configuration                                         */
+    /* --------------------------------------------------------------- */
+    console.log(
+      `[plan][${planId}] 🤖 Model config => planner="${mergedConfig.plannerModel}"  codegen="${mergedConfig.codegenModel}"`,
+    );
 
     const mcptool: any = tool;
 
@@ -311,6 +345,10 @@ export async function plan(
       checkout_branch: checkoutBranchTool as any,
       get_branches: getBranchesTool as any,
     } as const;
+
+    console.log(
+      `[plan][${planId}] 🛠️  Tools configured: ${Object.keys(tools).join(', ')}`,
+    );
 
     // System message that's always included
     const systemMessage: ModelMessage = {
@@ -351,8 +389,30 @@ General guidelines:
       ? [systemMessage, ...previousMessages, userMessage]
       : [systemMessage, userMessage];
 
+    console.log(
+      `[plan][${planId}] 💬 Message array prepared (size=${messages.length})`,
+    );
+
+    /* --------------------------------------------------------------- */
+    /* 5.5)  Provider sanity check                                     */
+    /* --------------------------------------------------------------- */
+    if (!openrouter) {
+      const errMsg =
+        'OpenRouter provider is not initialised – check OPENROUTER_API_KEY';
+      console.error(`[plan][${planId}] 🛑 ${errMsg}`);
+      throw new Error(errMsg);
+    }
+
+    /* --------------------------------------------------------------- */
+    /* 6)  streamText invocation                                       */
+    /* --------------------------------------------------------------- */
+    const streamStart = Date.now();
+    console.log(
+      `[plan][${planId}] 🚀 Calling streamText(model="${mergedConfig.plannerModel}") …`,
+    );
+
     // Delegate
-    return streamText({
+    const stream = await streamText({
       model: openrouter(mergedConfig.plannerModel),
       messages,
       tools,
@@ -363,8 +423,18 @@ General guidelines:
         ),
       temperature: 0.2,
     });
+    console.log(
+      `[plan][${planId}] ✅ streamText resolved in ${Date.now() - streamStart}ms`,
+    );
+
+    return stream;
   } catch (error: any) {
-    console.error('Error planning with OpenAI via Vercel AI SDK:', error);
+    console.error(
+      `[plan] 🛑 Error after ${
+        error?.durationMs ?? 'N/A'
+      }ms\n`,
+      error,
+    );
     throw new Error(`Failed to plan: ${error.message}`);
   }
 }
