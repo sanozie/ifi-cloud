@@ -336,6 +336,18 @@ class APIClient: NSObject {
 
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
+            
+            // ---------------------------------------------------------
+            // Debug aid: Log raw response to diagnose decoding issues
+            // ---------------------------------------------------------
+            #if DEBUG
+            if let raw = String(data: data, encoding: .utf8) {
+                print("[APIClient] fetchThreads raw response: \(raw)")
+            } else {
+                print("[APIClient] fetchThreads raw response (non-UTF8, \(data.count) bytes)")
+            }
+            #endif
+
             return try decoder.decode([ThreadResponse].self, from: data)
         } catch let decodingError as DecodingError {
             throw APIError.decodingFailed(decodingError)
