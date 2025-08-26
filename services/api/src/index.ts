@@ -197,7 +197,8 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     console.log("[chat] ✅ plan() resolved");
 
     // UIMessageStreamResponse from AI SDK
-    return stream.toUIMessageStreamResponse();
+    // Switch to plain-text streaming for simpler mobile consumption
+    return stream.toTextStreamResponse();
 
   } catch (err: any) {
     console.error("[chat] 🛑 Error handling chat request:", err.message);

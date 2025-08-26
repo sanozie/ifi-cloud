@@ -18,6 +18,7 @@ enum APIError: Error {
     case networkError
     case streamError(String)
     case timeout
+    case retryLimitExceeded
     
     var localizedDescription: String {
         switch self {
@@ -37,6 +38,8 @@ enum APIError: Error {
             return "Stream error: \(message)"
         case .timeout:
             return "Request timed out"
+        case .retryLimitExceeded:
+            return "Retry limit exceeded"
         }
     }
 }
@@ -95,43 +98,6 @@ struct PullRequestInfo: Decodable {
     let status: String
 }
 
-/// Represents a chunk of streamed data from the AI response
-struct StreamChunk: Decodable {
-    let id: String?
-    let object: String?
-    let created: Int?
-    let model: String?
-    let choices: [Choice]?
-    
-    struct Choice: Decodable {
-        let index: Int?
-        let delta: Delta?
-        let finishReason: String?
-        
-        enum CodingKeys: String, CodingKey {
-            case index
-            case delta
-            case finishReason = "finish_reason"
-        }
-    }
-    
-    struct Delta: Decodable {
-        let content: String?
-        let role: String?
-    }
-}
-
-/// Vercel AI SDK stream format
-struct VercelStreamChunk: Decodable {
-    let text: String?
-    let content: String?
-    let done: Bool?
-    
-    // Additional fields that might be present in Vercel AI SDK response
-    let type: String?
-    let message: String?
-}
-
 /// Protocol for handling streamed message chunks
 protocol StreamHandler {
     func handleChunk(_ text: String)
@@ -156,8 +122,8 @@ class APIClient: NSObject {
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
     
-    /// Default timeout interval for requests
-    private let timeoutInterval: TimeInterval = 30.0
+    /// Default timeout interval for requests (90 seconds for AI streaming)
+    private let timeoutInterval: TimeInterval = 90.0
     
     /// Publisher for streaming updates
     private var streamPublisher: PassthroughSubject<String, Error>?
@@ -167,6 +133,20 @@ class APIClient: NSObject {
     
     /// Cancellable storage for stream subscriptions
     private var cancellables = Set<AnyCancellable>()
+    
+    /// Buffer for accumulating partial SSE data
+    private var streamBuffer = ""
+    
+    /// Maximum number of retries for network requests
+    private let maxRetries = 3
+    
+    /// Current retry count for the active request
+    private var currentRetryCount = 0
+    
+    /// Retry delay in seconds (exponential backoff)
+    private func retryDelay(for attempt: Int) -> TimeInterval {
+        return pow(2.0, Double(attempt)) // 2, 4, 8, 16...
+    }
     
     // MARK: - Date Formatters (ISO-8601 Helper)
     /// A small set of reusable `ISO8601DateFormatter`s that accept
@@ -225,6 +205,10 @@ class APIClient: NSObject {
         threadId: String? = nil,
         handler: StreamHandler
     ) {
+        // Reset state for new request
+        streamBuffer = ""
+        currentRetryCount = 0
+        
         // Create the request
         let endpoint = "/v1/chat/messages"
         guard let url = URL(string: endpoint, relativeTo: baseURL) else {
@@ -232,10 +216,17 @@ class APIClient: NSObject {
             return
         }
         
+        #if DEBUG
+        print("[APIClient] Sending chat message to \(url.absoluteString)")
+        print("[APIClient] Message: \(message)")
+        print("[APIClient] ThreadId: \(threadId ?? "new thread")")
+        #endif
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = timeoutInterval
         
         // Prepare the request body
         let chatRequest = ChatRequest(threadId: threadId, input: message)
@@ -272,6 +263,12 @@ class APIClient: NSObject {
             guard let self = self else { return }
             
             if let error = error {
+                // Check if we should retry
+                if self.shouldRetry(error: error) {
+                    self.retryRequest(request: request, handler: handler)
+                    return
+                }
+                
                 self.streamPublisher?.send(completion: .failure(APIError.requestFailed(error)))
                 return
             }
@@ -283,6 +280,12 @@ class APIClient: NSObject {
             
             // Check for HTTP errors
             if httpResponse.statusCode >= 400 {
+                // Check if we should retry server errors (5xx)
+                if httpResponse.statusCode >= 500 && self.currentRetryCount < self.maxRetries {
+                    self.retryRequest(request: request, handler: handler)
+                    return
+                }
+                
                 self.streamPublisher?.send(completion: .failure(
                     APIError.serverError(httpResponse.statusCode, "Server returned error status")
                 ))
@@ -290,11 +293,62 @@ class APIClient: NSObject {
             }
             
             // The actual streaming is handled by the URLSessionDataDelegate methods
+            #if DEBUG
+            print("[APIClient] HTTP response received: \(httpResponse.statusCode)")
+            print("[APIClient] Content-Type: \(httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "none")")
+            #endif
         }
         
         // Store the task and start it
         self.currentTask = task
         task.resume()
+        
+        #if DEBUG
+        print("[APIClient] Request started with timeout: \(timeoutInterval) seconds")
+        #endif
+    }
+    
+    /// Retry a failed request with exponential backoff
+    private func retryRequest(request: URLRequest, handler: StreamHandler) {
+        currentRetryCount += 1
+        
+        if currentRetryCount > maxRetries {
+            streamPublisher?.send(completion: .failure(APIError.retryLimitExceeded))
+            return
+        }
+        
+        let delay = retryDelay(for: currentRetryCount)
+        
+        #if DEBUG
+        print("[APIClient] Retrying request (attempt \(currentRetryCount)/\(maxRetries)) after \(delay) seconds")
+        #endif
+        
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { return }
+            
+            // Create and start a new data task
+            let task = self.session.dataTask(with: request)
+            self.currentTask = task
+            task.resume()
+        }
+    }
+    
+    /// Determine if we should retry based on the error
+    private func shouldRetry(error: Error) -> Bool {
+        // Don't retry if we've hit the limit
+        if currentRetryCount >= maxRetries {
+            return false
+        }
+        
+        // Check for network-related errors that might be temporary
+        let nsError = error as NSError
+        let shouldRetry = nsError.domain == NSURLErrorDomain &&
+            (nsError.code == NSURLErrorTimedOut ||
+             nsError.code == NSURLErrorNetworkConnectionLost ||
+             nsError.code == NSURLErrorNotConnectedToInternet ||
+             nsError.code == NSURLErrorCannotConnectToHost)
+        
+        return shouldRetry
     }
     
     /// Send a chat message and receive a streamed response using async/await
@@ -501,72 +555,126 @@ extension APIClient: URLSessionDataDelegate {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         // Process the streaming data
         guard let text = String(data: data, encoding: .utf8) else {
+            #if DEBUG
+            print("[APIClient] ❌ Received non-UTF8 data: \(data.count) bytes")
+            #endif
             streamPublisher?.send(completion: .failure(APIError.invalidResponse))
             return
         }
         
-        // Split the response by newlines to handle JSON chunks
-        let lines = text.components(separatedBy: .newlines)
+        #if DEBUG
+        print("[APIClient] 📦 Received \(data.count) bytes of data")
+        print("[APIClient] 📝 Raw data: \(text)")
+        #endif
         
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedLine.isEmpty {
-                continue
-            }
+        // Append to buffer and process complete lines
+        streamBuffer += text
+        processStreamBuffer()
+    }
+    
+    /// Process the stream buffer to extract complete SSE messages
+    private func processStreamBuffer() {
+        // Look for complete lines in the buffer
+        while let newlineRange = streamBuffer.range(of: "\n") {
+            // Extract a complete line
+            let line = streamBuffer[..<newlineRange.lowerBound]
+            streamBuffer = String(streamBuffer[newlineRange.upperBound...])
             
+            // Process the line
+            processStreamLine(String(line))
+        }
+    }
+    
+    /// Process a single line from the SSE stream
+    private func processStreamLine(_ line: String) {
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        #if DEBUG
+        print("[APIClient] 🔍 Processing line: \(trimmedLine)")
+        #endif
+        
+        // Skip empty lines
+        if trimmedLine.isEmpty {
+            return
+        }
+        
+        // Check for completion marker
+        if trimmedLine == "[DONE]" {
             #if DEBUG
-            print("[APIClient] Stream chunk: \(trimmedLine)")
+            print("[APIClient] ✅ Stream complete: [DONE]")
             #endif
+            streamPublisher?.send(completion: .finished)
+            return
+        }
+        
+        // Handle SSE format with "data: " prefix
+        if trimmedLine.hasPrefix("data: ") {
+            let dataContent = trimmedLine.dropFirst(6).trimmingCharacters(in: .whitespacesAndNewlines)
             
-            // Check for completion markers
-            if trimmedLine == "[DONE]" || trimmedLine.contains("\"done\":true") {
+            // Check for completion marker in data content
+            if dataContent == "[DONE]" {
+                #if DEBUG
+                print("[APIClient] ✅ Stream complete: data: [DONE]")
+                #endif
                 streamPublisher?.send(completion: .finished)
-                continue
+                return
             }
             
-            // Try to parse as Vercel AI SDK format first
-            if let data = trimmedLine.data(using: .utf8) {
-                do {
-                    let vercelChunk = try JSONDecoder().decode(VercelStreamChunk.self, from: data)
-                    
-                    // Extract content from Vercel AI SDK format
-                    if let text = vercelChunk.text {
-                        streamPublisher?.send(text)
-                        continue
-                    } else if let content = vercelChunk.content {
-                        streamPublisher?.send(content)
-                        continue
-                    }
-                    
-                    // Check for completion
-                    if vercelChunk.done == true {
-                        streamPublisher?.send(completion: .finished)
-                        continue
-                    }
-                } catch {
-                    // Failed to parse as Vercel format, try OpenAI format
-                    do {
-                        let openAIChunk = try JSONDecoder().decode(StreamChunk.self, from: data)
-                        if let content = openAIChunk.choices?.first?.delta?.content {
-                            streamPublisher?.send(content)
-                            continue
-                        }
-                    } catch {
-                        // If both parsing attempts fail, just send the raw text
-                        // This is a fallback for any other format
-                        streamPublisher?.send(trimmedLine)
-                    }
-                }
-            }
+            // With toTextStreamResponse(), the content is plain text, no need for JSON parsing
+            #if DEBUG
+            print("[APIClient] 📤 Sending text from SSE: \(dataContent)")
+            #endif
+            streamPublisher?.send(dataContent)
+        } else {
+            // Direct text (non-SSE format) - just send it as is
+            #if DEBUG
+            print("[APIClient] 📤 Sending direct text: \(trimmedLine)")
+            #endif
+            streamPublisher?.send(trimmedLine)
         }
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
+            #if DEBUG
+            print("[APIClient] ❌ Task completed with error: \(error.localizedDescription)")
+            #endif
+            
+            // Check if we should retry
+            if shouldRetry(error: error), let request = task.originalRequest {
+                #if DEBUG
+                print("[APIClient] 🔄 Will retry request")
+                #endif
+                
+                // Create a dummy handler that forwards to the stream publisher
+                let dummyHandler = DummyStreamHandler(publisher: streamPublisher)
+                retryRequest(request: request, handler: dummyHandler)
+                return
+            }
+            
             streamPublisher?.send(completion: .failure(APIError.requestFailed(error)))
         } else {
+            #if DEBUG
+            print("[APIClient] ✅ Task completed successfully")
+            #endif
+            
+            // Process any remaining data in the buffer
+            if !streamBuffer.isEmpty {
+                #if DEBUG
+                print("[APIClient] 🧹 Processing remaining buffer: \(streamBuffer)")
+                #endif
+                processStreamBuffer()
+            }
+            
             streamPublisher?.send(completion: .finished)
         }
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        #if DEBUG
+        print("[APIClient] 🔀 Following redirect to: \(request.url?.absoluteString ?? "unknown")")
+        #endif
+        completionHandler(request)
     }
 }
 
@@ -590,5 +698,28 @@ private class AsyncStreamHandler: StreamHandler {
     
     func handleError(_ error: Error) {
         continuation.finish(throwing: error)
+    }
+}
+
+// MARK: - DummyStreamHandler
+
+/// Handler that forwards to a stream publisher (used for retries)
+private class DummyStreamHandler: StreamHandler {
+    private weak var publisher: PassthroughSubject<String, Error>?
+    
+    init(publisher: PassthroughSubject<String, Error>?) {
+        self.publisher = publisher
+    }
+    
+    func handleChunk(_ text: String) {
+        publisher?.send(text)
+    }
+    
+    func handleCompletion() {
+        publisher?.send(completion: .finished)
+    }
+    
+    func handleError(_ error: Error) {
+        publisher?.send(completion: .failure(error))
     }
 }
