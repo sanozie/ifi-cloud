@@ -22,6 +22,9 @@ final class StreamController {
             .throttle(for: .milliseconds(8), scheduler: DispatchQueue.main, latest: true)
             .receive(on: DispatchQueue.global())
             .map { buffer in
+                #if DEBUG
+                print("[STREAM-DEBUG] 🔨 StreamController.map – building content from buffer len=\(buffer.count)")
+                #endif
                 let content = StreamContentBuilder(buffer: buffer).build()
                 return content
             }
@@ -43,11 +46,17 @@ final class StreamController {
     /// Processes a new chunk of content by appending it to the input buffer
     /// - Parameter chunk: The new content chunk to process
     func processChunk(_ chunk: String) {
+        #if DEBUG
+        print("[STREAM-DEBUG] 📥 StreamController.processChunk – received chunk len=\(chunk.count), buffer total=\(input.count + chunk.count)")
+        #endif
         input += chunk
     }
     
     /// Reset the input buffer and clear any error state
     func reset() {
+        #if DEBUG
+        print("[STREAM-DEBUG] 🔄 StreamController.reset – clearing buffer and error state")
+        #endif
         input = ""
         notifiedErrors.removeAll()
     }
@@ -84,6 +93,9 @@ final class StreamController {
     /// Manually adds an error to the stream
     /// - Parameter error: The error to add
     func addError(_ error: Error) {
+        #if DEBUG
+        print("[STREAM-DEBUG] ❌ StreamController.addError – adding error: \(error.localizedDescription)")
+        #endif
         var ids: any IdentifierGenerator = IncrementalIdentifierGenerator.create()
         let identifiableError = IdentifiableError(ids: &ids, underlyingError: error)
         notifyError(identifiableError)

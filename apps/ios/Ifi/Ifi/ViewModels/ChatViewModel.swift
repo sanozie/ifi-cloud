@@ -84,7 +84,12 @@ final class ChatViewModel {
     var showError: Bool = false
     
     /// The structured stream content for the current response
-    var streamContent: StreamContent = StreamContent()
+    var streamContent: StreamContent = {
+        // Start in a “finished” state so `isStreaming` resolves to `false`
+        var content = StreamContent()
+        content.finished = true
+        return content
+    }()
     
     /// The active chat thread
     var currentThread: ThreadWithMessages?
@@ -131,6 +136,8 @@ final class ChatViewModel {
     func loadThread(id: String) async {
         isLoading = true
         errorMessage = nil
+        // Always reset loading state on exit – success, failure, or cancellation
+        defer { isLoading = false }
         
         do {
             // Fetch the thread from the API
@@ -144,8 +151,6 @@ final class ChatViewModel {
         } catch {
             handleInternalError(error)
         }
-        
-        isLoading = false
     }
     
     // MARK: - Refresh Support
@@ -195,6 +200,9 @@ final class ChatViewModel {
         // Set streaming state
         isStreaming = true
         
+        // Debug log for outbound request
+        print("[STREAM-DEBUG] ➡️  sendMessage() – initiating API call. textLen=\(messageText.count) threadId=\(threadId ?? "nil")")
+
         // Send the message to the API
         apiClient.sendChatMessage(
             message: messageText,
@@ -219,6 +227,14 @@ final class ChatViewModel {
     /// Handle a new stream content update
     /// - Parameter content: The updated stream content
     private func handleStreamContent(_ content: StreamContent) {
+        // Ignore the *initial* empty emission from `StreamController`
+        // (no items and not marked finished) that would otherwise
+        // flip `isStreaming` to `true` and disable the Send button.
+        guard !(content.items.isEmpty && content.finished == false) else { return }
+
+#if DEBUG
+        print("[STREAM-DEBUG] 📥 handleStreamContent() – items=\(content.items.count) finished=\(content.finished)")
+#endif
         streamContent = content
         
         // Update UI state based on content
@@ -226,6 +242,7 @@ final class ChatViewModel {
             isLoading = false
         }
         
+        // Update streaming flag only for meaningful updates
         isStreaming = !content.finished
         
         // If streaming is complete, commit the response
@@ -269,6 +286,10 @@ final class ChatViewModel {
         
         // Extract the markdown content from stream items
         var responseText = ""
+
+#if DEBUG
+        print("[STREAM-DEBUG] 📝 commitStreamingResponse() – committing \(streamContent.items.count) items")
+#endif
         
         for item in streamContent.items {
             switch item.value {
@@ -292,7 +313,13 @@ final class ChatViewModel {
         messages.append(assistantMessage)
         
         // Reset streaming state
-        streamContent = StreamContent()
+        // Ensure the new stream content starts in a *finished* state so that
+        // `isStreaming` evaluates to `false` immediately after committing.
+        streamContent = {
+            var content = StreamContent()
+            content.finished = true
+            return content
+        }()
         isStreaming = false
     }
 }
@@ -306,11 +333,19 @@ extension ChatViewModel: StreamHandler {
         
         // Ensure streaming flag is set
         isStreaming = true
+
+#if DEBUG
+        print("[STREAM-DEBUG] 🔄 handleChunk() – received chunk len=\(text.count)")
+#endif
     }
     
     func handleCompletion() {
         // Mark the stream as finished
         isStreaming = false
+
+#if DEBUG
+        print("[STREAM-DEBUG] ✅ handleCompletion() – stream finished")
+#endif
     }
     
     func handleError(_ error: Error) {
@@ -328,5 +363,9 @@ extension ChatViewModel: StreamHandler {
         
         // Handle the error
         handleInternalError(error)
+
+#if DEBUG
+        print("[STREAM-DEBUG] ❌ handleError() – \(error.localizedDescription)")
+#endif
     }
 }
