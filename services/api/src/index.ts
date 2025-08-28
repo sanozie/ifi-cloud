@@ -213,14 +213,19 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
     console.log("[chat] ✅ plan() resolved");
 
-    return stream.toUIMessageStreamResponse({
+    const response = stream.toUIMessageStreamResponse({
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Encoding': 'none',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'X-Accel-Buffering': 'no', // Disable nginx buffering if applicable
       },
     });
+
+    console.log("[chat] 📡 Stream response created, returning to client");
+    return response;
   } catch (err: any) {
     console.error("[chat] 🛑 Error handling chat request:", err.message);
     return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
