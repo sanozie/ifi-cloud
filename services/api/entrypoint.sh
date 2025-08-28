@@ -243,6 +243,11 @@ else
 fi
 
 # Configure Continue CLI if needed
+
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+  log_warn "ANTHROPIC_API_KEY not set, Continue CLI may not work properly"
+fi
+
 CONTINUE_CONFIG_DIR="$HOME/.continue"
 mkdir -p "$CONTINUE_CONFIG_DIR"
 
@@ -255,7 +260,7 @@ schema: v1
 models:
   - uses: anthropic/claude-4-sonnet
     with:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     override:
       roles:
         - chat
