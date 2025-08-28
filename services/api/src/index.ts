@@ -213,16 +213,41 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
     console.log("[chat] ✅ plan() resolved");
 
-    return stream.toUIMessageStreamResponse({
+// Debug the stream object
+    console.log("[chat] 🔍 Stream type:", typeof stream);
+    console.log("[chat] 🔍 Stream constructor:", stream.constructor.name);
+    console.log("[chat] 🔍 Stream keys:", Object.keys(stream));
+    console.log("[chat] 🔍 Has toUIMessageStreamResponse:", typeof stream.toUIMessageStreamResponse);
+
+// Create the response and debug it
+    const streamResponse = stream.toUIMessageStreamResponse({
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Encoding': 'none',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': '*',
-        'X-Accel-Buffering': 'no', // Disable nginx buffering if applicable
+        'X-Accel-Buffering': 'no',
+        'Transfer-Encoding': 'chunked',
       },
     });
+
+    console.log("[chat] 🔍 Response type:", typeof streamResponse);
+    console.log("[chat] 🔍 Response constructor:", streamResponse.constructor.name);
+    console.log("[chat] 🔍 Response has body:", !!streamResponse.body);
+    console.log("[chat] 🔍 Response body type:", typeof streamResponse.body);
+    console.log("[chat] 🔍 Response status:", streamResponse.status);
+    console.log("[chat] 🔍 Response headers:", Object.fromEntries(streamResponse.headers.entries()));
+
+// Check if body is locked or readable
+    if (streamResponse.body) {
+      console.log("[chat] 🔍 Body locked:", streamResponse.body.locked);
+      console.log("[chat] 🔍 Body readable:", !streamResponse.body.locked);
+    }
+
+    console.log("[chat] 📡 Stream response created, returning to client");
+    return streamResponse;
+
   } catch (err: any) {
     console.error("[chat] 🛑 Error handling chat request:", err.message);
     return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
