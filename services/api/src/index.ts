@@ -217,9 +217,10 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Content-Encoding': 'none',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
       },
     });
-
   } catch (err: any) {
     console.error("[chat] 🛑 Error handling chat request:", err.message);
     return res.status(500).json({ error: `Internal Server Error: ${err.message}` });
