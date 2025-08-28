@@ -200,7 +200,12 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 
     console.log("[chat] ✅ plan() resolved");
 
-    return stream.toUIMessageStreamResponse()
+    return stream.toUIMessageStreamResponse({
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Encoding': 'none',
+      },
+    });
 
   } catch (err: any) {
     console.error("[chat] 🛑 Error handling chat request:", err.message);
