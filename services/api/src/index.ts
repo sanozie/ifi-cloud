@@ -222,13 +222,13 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
 // Create the response and debug it
     const streamResponse = stream.toUIMessageStreamResponse({
       headers: {
-        'Content-Type': 'application/octet-stream',
-        'Content-Encoding': 'none',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        'Content-Type': 'text/plain; charset=utf-8', // Change from octet-stream
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Connection': 'close', // Force connection close to avoid HTTP/2 multiplexing
         'Access-Control-Allow-Origin': '*',
         'X-Accel-Buffering': 'no',
-        'Transfer-Encoding': 'chunked',
       },
     });
 
