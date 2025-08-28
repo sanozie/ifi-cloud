@@ -249,16 +249,22 @@ mkdir -p "$CONTINUE_CONFIG_DIR"
 if [ ! -f "$CONTINUE_CONFIG_DIR/config.yaml" ]; then
   log_info "Setting up Continue CLI configuration"
   cat > "$CONTINUE_CONFIG_DIR/config.yaml" << EOF
+name: Ifi
+version: 1.0.3
+schema: v1
 models:
-  - title: "Claude Sonnet 4"
-    provider: "openrouter"
-    model: "anthropic/claude-3.5-sonnet"
-    apiBase: "https://openrouter.ai/api/v1"
-    apiKey: "${OPENROUTER_API_KEY}"
+  - uses: anthropic/claude-4-sonnet
+    with:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    override:
+      roles:
+        - chat
+context:
+  - uses: continuedev/terminal-context
+  - uses: continuedev/file-context
+mcpServers:
+  - uses: upstash/context7-mcp
 
-rules: []
-
-tools: []
 EOF
   log_info "Continue CLI configuration created"
 else
