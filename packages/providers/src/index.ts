@@ -119,7 +119,7 @@ function createSearchCodebaseTool(mcptool: any) {
           };
         }
 
-        const cmd = `continue query "${query.replace(/\"/g, '\\"')}" --headless`;
+        const cmd = `cn -p "${query.replace(/\"/g, '\\"')}"`;
         const { stdout } = await execAsync(cmd, { cwd: repoDir, maxBuffer: 5_000_000 });
 
         return { output: stdout.trim() };

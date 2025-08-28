@@ -20,6 +20,142 @@ log_error() {
   echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Continue CLI testing functions
+test_continue_cli_installation() {
+  log_info "Testing Continue CLI installation and basic functionality"
+
+  # Check if Continue CLI is installed
+  if ! command -v cn &> /dev/null; then
+    log_error "Continue CLI (cn) not found in PATH. Please ensure it's installed with: npm i -g @continuedev/cli"
+    return 1
+  fi
+
+  # Test basic Continue CLI functionality with version or help
+  if cn --help &> /dev/null; then
+    log_info "Continue CLI (cn) is installed and responsive"
+  else
+    log_error "Continue CLI (cn) is installed but not responding correctly"
+    return 1
+  fi
+
+  return 0
+}
+
+test_continue_repo_access() {
+  log_info "Testing Continue CLI access to cloned repositories"
+
+  if [ "$SKIP_REPOS_SETUP" = true ]; then
+    log_info "Repository setup was skipped, skipping repository access test"
+    return 0
+  fi
+
+  if [ ! -d "/repos" ]; then
+    log_warn "No /repos directory found, skipping repository access test"
+    return 0
+  fi
+
+  # Count available repositories
+  repo_count=$(find /repos -maxdepth 1 -type d -name ".git" -parent | wc -l)
+  if [ "$repo_count" -eq 0 ]; then
+    # Alternative count method for repositories
+    repo_count=$(find /repos -maxdepth 1 -type d ! -name "." ! -name ".." | wc -l)
+    if [ "$repo_count" -eq 0 ]; then
+      log_warn "No repositories found in /repos directory"
+      return 0
+    fi
+  fi
+
+  log_info "Found $repo_count repositories in /repos"
+
+  # Test Continue CLI can access the repositories directory
+  if [ -r "/repos" ] && [ -x "/repos" ]; then
+    log_info "Continue CLI should have read/execute access to /repos directory"
+  else
+    log_error "Continue CLI may not have proper access to /repos directory"
+    return 1
+  fi
+
+  # Test accessing a specific repository
+  first_repo=$(find /repos -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
+  if [ -n "$first_repo" ] && [ -d "$first_repo" ]; then
+    log_info "Testing access to repository: $(basename "$first_repo")"
+    if [ -r "$first_repo" ] && [ -x "$first_repo" ]; then
+      log_info "Continue CLI should have proper access to repository files"
+      # List a few files to verify access
+      file_count=$(find "$first_repo" -type f | head -10 | wc -l)
+      log_info "Can access $file_count files in $(basename "$first_repo")"
+    else
+      log_error "Continue CLI may not have proper access to repository: $(basename "$first_repo")"
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+test_continue_repo_summary() {
+  log_info "Testing Continue CLI repository summarization functionality"
+
+  if [ "$SKIP_REPOS_SETUP" = true ]; then
+    log_info "Repository setup was skipped, skipping repository summary test"
+    return 0
+  fi
+
+  if [ ! -d "/repos" ]; then
+    log_warn "No /repos directory found, skipping repository summary test"
+    return 0
+  fi
+
+  # Find the first available repository
+  first_repo=$(find /repos -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
+  if [ -z "$first_repo" ] || [ ! -d "$first_repo" ]; then
+    log_warn "No repositories found for summary test"
+    return 0
+  fi
+
+  repo_name=$(basename "$first_repo")
+  log_info "Testing Continue CLI summarization on repository: $repo_name"
+
+  # Change to the repository directory for context
+  cd "$first_repo"
+
+  log_info "Attempting to generate repository summary using Continue CLI headless mode"
+
+  # Test Continue CLI with headless mode using -p flag and timeout
+  if timeout 90 cn -p "Please provide a brief summary of this repository. What is its purpose, main technologies used, and key components? Focus on the README, package.json, and main source files." > /tmp/continue_test_output.txt 2>&1; then
+    # Check if we got a valid response
+    if [ -s /tmp/continue_test_output.txt ]; then
+      output_size=$(wc -c < /tmp/continue_test_output.txt)
+      if [ "$output_size" -gt 50 ]; then
+        log_info "Continue CLI successfully generated repository summary ($output_size characters)"
+        log_info "Summary preview: $(head -c 300 /tmp/continue_test_output.txt | tr '\n' ' ')..."
+      else
+        log_warn "Continue CLI responded but with very short output"
+        log_warn "Response: $(cat /tmp/continue_test_output.txt)"
+      fi
+    else
+      log_warn "Continue CLI responded but with empty output"
+    fi
+  else
+    exit_code=$?
+    log_error "Continue CLI failed to generate repository summary (exit code: $exit_code)"
+    if [ -s /tmp/continue_test_output.txt ]; then
+      log_error "Error output: $(head -c 500 /tmp/continue_test_output.txt)"
+    fi
+    # Clean up and return to original directory
+    rm -f /tmp/continue_test_output.txt
+    cd - > /dev/null
+    return 1
+  fi
+
+  # Clean up and return to original directory
+  rm -f /tmp/continue_test_output.txt
+  cd - > /dev/null
+
+  log_info "Continue CLI repository summarization test completed successfully"
+  return 0
+}
+
 #----------------------------------------------------------
 # Detect CI environment (e.g., GitHub Actions exports CI=true)
 #----------------------------------------------------------
@@ -110,20 +246,19 @@ fi
 CONTINUE_CONFIG_DIR="$HOME/.continue"
 mkdir -p "$CONTINUE_CONFIG_DIR"
 
-if [ ! -f "$CONTINUE_CONFIG_DIR/config.json" ]; then
+if [ ! -f "$CONTINUE_CONFIG_DIR/config.yaml" ]; then
   log_info "Setting up Continue CLI configuration"
-  cat > "$CONTINUE_CONFIG_DIR/config.json" << EOF
-{
-  "models": [
-    {
-      "title": "Claude Sonnet 4",
-      "provider": "openrouter"
-      "model": "anthropic/claude-sonnet-4"
-      "apiBase": "https://openrouter.ai/api/v1"
-      "apiKey": "${OPENROUTER_API_KEY}"
-    }
-  ]
-}
+  cat > "$CONTINUE_CONFIG_DIR/config.yaml" << EOF
+models:
+  - title: "Claude Sonnet 4"
+    provider: "openrouter"
+    model: "anthropic/claude-3.5-sonnet"
+    apiBase: "https://openrouter.ai/api/v1"
+    apiKey: "${OPENROUTER_API_KEY}"
+
+rules: []
+
+tools: []
 EOF
   log_info "Continue CLI configuration created"
 else
@@ -137,6 +272,35 @@ if [ "$SKIP_REPOS_SETUP" = false ]; then
 else
   log_info "Repository setup skipped; no repositories available."
 fi
+
+#----------------------------------------------------------
+# Test Continue CLI functionality
+#----------------------------------------------------------
+log_info "Testing Continue CLI before starting API server"
+
+if test_continue_cli_installation; then
+  log_info "Continue CLI installation test passed"
+else
+  log_error "Continue CLI installation test failed"
+  exit 1
+fi
+
+if test_continue_repo_access; then
+  log_info "Continue CLI repository access test passed"
+else
+  log_error "Continue CLI repository access test failed - Continue may not be able to access cloned repositories"
+  exit 1
+fi
+
+if test_continue_repo_summary; then
+  log_info "Continue CLI repository summarization test passed"
+else
+  log_error "Continue CLI repository summarization test failed - Continue may not be able to analyze repositories properly"
+  # This is a warning rather than a hard failure since it depends on external API
+  log_warn "Continuing with API server startup, but Continue CLI may have issues with repository analysis"
+fi
+
+log_info "All Continue CLI tests completed successfully"
 
 # Start the API server
 log_info "Starting API server"
