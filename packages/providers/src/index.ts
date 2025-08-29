@@ -87,14 +87,41 @@ function createSearchCodebaseTool(mcptool: any) {
         repository?: string;
       },
     ) {
+      console.log('[searchCodebaseTool] 🔍 ENTER - Starting codebase search');
+      console.log('[searchCodebaseTool] 📝 Input parameters:', {
+        query: query.substring(0, 100) + (query.length > 100 ? '...' : ''),
+        repository: repository || 'undefined (will auto-detect)',
+        queryLength: query.length
+      });
+
       try {
         // Determine target repo directory (static fs import)
         const reposDir = '/repos';
+        console.log('[searchCodebaseTool] 📂 Target repos directory:', reposDir);
+
         let dirEntries: Dirent[] | null = null;
+        console.log('[searchCodebaseTool] 🔍 Attempting to read repos directory...');
+        
         try {
           dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
+          console.log('[searchCodebaseTool] ✅ Successfully read repos directory');
+          console.log('[searchCodebaseTool] 📋 Directory contents:', {
+            totalEntries: dirEntries.length,
+            entries: dirEntries.map(entry => ({
+              name: entry.name,
+              isDirectory: entry.isDirectory(),
+              isFile: entry.isFile()
+            }))
+          });
         } catch (e: any) {
+          console.log('[searchCodebaseTool] ❌ Failed to read repos directory:', {
+            error: e.message,
+            code: e.code,
+            stack: e.stack?.substring(0, 200)
+          });
+          
           if (e?.code === 'ENOENT') {
+            console.log('[searchCodebaseTool] 🚫 ENOENT detected - repos directory does not exist');
             return {
               warning: true,
               message:
@@ -104,14 +131,26 @@ function createSearchCodebaseTool(mcptool: any) {
           throw e;
         }
 
-        const repoDir =
-          repository
-            ? `${reposDir}/${repository}`
-            : dirEntries.find((d) => d.isDirectory())?.name
-            ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
-            : null;
+        // Determine which repository directory to use
+        console.log('[searchCodebaseTool] 🎯 Determining target repository directory...');
+        
+        const availableDirectories = dirEntries.filter(d => d.isDirectory());
+        console.log('[searchCodebaseTool] 📁 Available directories:', availableDirectories.map(d => d.name));
+
+        const repoDir = repository
+          ? `${reposDir}/${repository}`
+          : dirEntries.find((d) => d.isDirectory())?.name
+          ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
+          : null;
+
+        console.log('[searchCodebaseTool] 🎯 Repository directory resolution:', {
+          requestedRepository: repository,
+          resolvedRepoDir: repoDir,
+          resolutionMethod: repository ? 'explicit' : 'auto-detected'
+        });
 
         if (!repoDir) {
+          console.log('[searchCodebaseTool] ❌ No valid repository directory found');
           return {
             warning: true,
             message:
@@ -119,15 +158,45 @@ function createSearchCodebaseTool(mcptool: any) {
           };
         }
 
-        const cmd = `cn -p "${query.replace(/\"/g, '\\"')}"`;
-        const { stdout } = await execAsync(cmd, { cwd: repoDir, maxBuffer: 5_000_000 });
+        // Prepare and execute the Continue CLI command
+        const rawCmd = `cn -p "${query.replace(/\"/g, '\\"')}"`;
+        console.log('[searchCodebaseTool] ⚡ Preparing Continue CLI command:', {
+          originalQuery: query.substring(0, 100) + (query.length > 100 ? '...' : ''),
+          escapedQuery: query.replace(/\"/g, '\\"').substring(0, 100) + (query.length > 100 ? '...' : ''),
+          command: rawCmd,
+          workingDirectory: repoDir,
+          maxBuffer: 5_000_000
+        });
+
+        console.log('[searchCodebaseTool] 🚀 Executing Continue CLI command...');
+        const execStart = Date.now();
+        
+        const { stdout } = await execAsync(rawCmd, { 
+          cwd: repoDir, 
+          maxBuffer: 5_000_000 
+        });
+        
+        const execTime = Date.now() - execStart;
+        console.log('[searchCodebaseTool] ✅ Continue CLI execution completed:', {
+          executionTimeMs: execTime,
+          stdoutLength: stdout.length,
+          stdoutPreview: stdout.substring(0, 200) + (stdout.length > 200 ? '...' : '')
+        });
 
         return { output: stdout.trim() };
       } catch (err: any) {
+        console.error('[searchCodebaseTool] ❌ searchCodebase execution failed:', {
+          message: err.message,
+          code: err.code,
+          stack: err.stack?.substring(0, 200)
+        });
+        
         return {
           error: true,
           message: `searchCodebase execution failed: ${err.message}`,
         };
+      } finally {
+        console.log('[searchCodebaseTool] 🚪 EXIT');
       }
     },
   }) as any;
