@@ -20,6 +20,7 @@ model Thread {
   // New lifecycle state for multi-spec workflow
   // planning | working | waiting_for_feedback | archived
   state           String   @default("planning")
+  chat            Json
   // Track the active PR (if any) so planner can fetch / update it
   currentPrBranch String?
   currentPrUrl    String?
@@ -27,33 +28,11 @@ model Thread {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  messages   Message[]
-  embeddings Embedding[]
-  specs      Spec[]
-  jobs       Job[]
+  specs Spec[]
+  jobs  Job[]
 
   @@index([createdAt(sort: Desc)])
   @@index([state])
-}
-
-model Message {
-  id               String   @id @default(cuid())
-  threadId         String
-  role             String
-  content          String   @db.Text
-  createdAt        DateTime @default(now())
-  metadata         Json?
-  provider         String?
-  tokensPrompt     Int?
-  tokensCompletion Int?
-  costUsd          Float?
-
-  // Relations
-  thread     Thread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  embeddings Embedding[]
-
-  @@index([threadId])
-  @@index([createdAt])
 }
 
 model Spec {
@@ -89,45 +68,10 @@ model Job {
   updatedAt DateTime @updatedAt
 
   // Relations
-  thread        Thread?      @relation(fields: [threadId], references: [id])
-  spec          Spec?        @relation(fields: [specId], references: [id])
-  pullRequest   PullRequest? @relation(fields: [pullRequestId], references: [id])
-  pullRequestId String?      @unique
+  thread Thread? @relation(fields: [threadId], references: [id])
+  spec   Spec?   @relation(fields: [specId], references: [id])
 
   @@index([status])
   @@index([createdAt(sort: Desc)])
   @@index([threadId])
-}
-
-model Embedding {
-  id        String                      @id @default(cuid())
-  threadId  String?
-  messageId String?
-  vector    Unsupported("vector(1536)")
-  createdAt DateTime                    @default(now())
-
-  // Relations
-  thread  Thread?  @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  message Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@index([threadId])
-  @@index([messageId])
-}
-
-model PullRequest {
-  id         String   @id @default(cuid())
-  jobId      String
-  repo       String
-  prNumber   Int
-  url        String
-  status     String
-  headBranch String
-  baseBranch String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  job Job?
-
-  @@index([jobId])
-  @@index([status])
 }
