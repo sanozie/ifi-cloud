@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { MessageRole, ThreadState, SpecType } from '@ifi/shared';
+import { ThreadState, SpecType } from '@ifi/shared';
 import type { Prisma } from '@prisma/client';
 
 // Singleton PrismaClient instance
@@ -14,25 +14,23 @@ if (process.env.NODE_ENV !== 'production') {
   global.prisma = prisma;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Threads                                                           */
+/* ------------------------------------------------------------------ */
+
 /**
  * Create a new thread
  * @returns The created thread
  * @param params
  */
 export async function createThread(params: {
-  title: string;
-  userId?: string;
+  title: string,
+  chat: object,
 }) {
   return prisma.thread.create({
     data: {
       title: params.title,
-    },
-    include: {
-      messages: {
-        orderBy: {
-          createdAt: 'asc',
-        },
-      },
+      chat: params.chat,
     }
   });
 }
@@ -41,30 +39,74 @@ export async function createThread(params: {
  * Add a message to a thread
  * Accepts rich params to support token/cost tracking
  */
-export async function addMessage(params: {
-  threadId: string;
-  role: MessageRole;
-  content: string;
-  metadata?: Record<string, any>;
-  provider?: string;
-  tokensPrompt?: number;
-  tokensCompletion?: number;
-  costUsd?: number;
+export async function saveThread(params: {
+  threadId: string,
+  chat: object
 }) {
-  return prisma.message.create({
+  return prisma.thread.update({
+    where: {
+      id: params.threadId,
+    },
     data: {
-      threadId: params.threadId,
-      role: params.role,
-      content: params.content,
-      // Store metadata as JSON rather than stringify
-      metadata: params.metadata as Prisma.InputJsonValue | undefined,
-      provider: params.provider,
-      tokensPrompt: params.tokensPrompt,
-      tokensCompletion: params.tokensCompletion,
-      costUsd: params.costUsd,
+      chat: params.chat,
     },
   });
 }
+
+
+/**
+ * Get a thread by ID
+ * @param threadId Thread ID
+ * @returns The thread
+ */
+export async function getThread(threadId: string) {
+  return prisma.thread.findUnique({
+    where: {
+      id: threadId,
+    }
+  });
+}
+
+/**
+ * Get all threads
+ * @returns All threads
+ */
+export async function getThreads() {
+  return prisma.thread.findMany({
+    orderBy: {
+      updatedAt: 'desc',
+    }
+  });
+}
+
+/**
+ * Update a thread's lifecycle state and (optionally) current PR info.
+ * Passing null for branch/url will clear the fields.
+ */
+export async function updateThreadState(
+  threadId: string,
+  state: ThreadState,
+  opts?: { currentPrBranch?: string | null; currentPrUrl?: string | null }
+) {
+  return prisma.thread.update({
+    where: { id: threadId },
+    data: {
+      state,
+      currentPrBranch:
+        opts && Object.prototype.hasOwnProperty.call(opts, 'currentPrBranch')
+          ? opts.currentPrBranch
+          : undefined,
+      currentPrUrl:
+        opts && Object.prototype.hasOwnProperty.call(opts, 'currentPrUrl')
+          ? opts.currentPrUrl
+          : undefined,
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Jobs                                                              */
+/* ------------------------------------------------------------------ */
 
 /**
  * Create a new job
@@ -81,46 +123,6 @@ export async function createJob(params: {
       threadId: params.threadId,
       specId: params.specId,
       status: params.status,
-    },
-  });
-}
-
-/**
- * Get a thread by ID with messages
- * @param threadId Thread ID
- * @returns The thread with messages
- */
-export async function getThread(threadId: string) {
-  return prisma.thread.findUnique({
-    where: {
-      id: threadId,
-    },
-    include: {
-      messages: {
-        orderBy: {
-          createdAt: 'asc',
-        },
-      },
-    },
-  });
-}
-
-/**
- * Get all threads
- * @returns All threads
- */
-export async function getThreads() {
-  return prisma.thread.findMany({
-    orderBy: {
-      updatedAt: 'desc',
-    },
-    include: {
-      messages: {
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: 1,
-      },
     },
   });
 }
@@ -162,9 +164,10 @@ export async function updateJob(
   });
 }
 
-/**
- * SPEC HELPERS
- */
+/* ------------------------------------------------------------------ */
+/*  Specs                                                             */
+/* ------------------------------------------------------------------ */
+
 export function getLatestDraftSpec(threadId: string) {
   return prisma.spec.findFirst({
     where: { threadId },
@@ -196,34 +199,6 @@ export async function upsertDraftSpec(
   });
 }
 
-/* ------------------------------------------------------------------ */
-/*  Multi-spec helpers                                                */
-/* ------------------------------------------------------------------ */
-
-/**
- * Update a thread's lifecycle state and (optionally) current PR info.
- * Passing null for branch/url will clear the fields.
- */
-export async function updateThreadState(
-  threadId: string,
-  state: ThreadState,
-  opts?: { currentPrBranch?: string | null; currentPrUrl?: string | null }
-) {
-  return prisma.thread.update({
-    where: { id: threadId },
-    data: {
-      state,
-      currentPrBranch:
-        opts && Object.prototype.hasOwnProperty.call(opts, 'currentPrBranch')
-          ? opts.currentPrBranch
-          : undefined,
-      currentPrUrl:
-        opts && Object.prototype.hasOwnProperty.call(opts, 'currentPrUrl')
-          ? opts.currentPrUrl
-          : undefined,
-    },
-  });
-}
 
 /**
  * Create an UPDATE-type spec (version is latest +1)
@@ -247,19 +222,6 @@ export async function createUpdateSpec(params: {
       version: (latest?.version ?? 0) + 1,
       specType: SpecType.UPDATE,
       targetBranch: params.targetBranch,
-    },
-  });
-}
-
-/**
- * Fetch complete thread info (messages + specs) for planner/worker.
- */
-export async function getActiveThread(threadId: string) {
-  return prisma.thread.findUnique({
-    where: { id: threadId },
-    include: {
-      messages: { orderBy: { createdAt: 'asc' } },
-      specs: { orderBy: { createdAt: 'asc' } },
     },
   });
 }
@@ -299,38 +261,4 @@ export function transitionThreadToPlanning(threadId: string) {
   });
 }
 
-/**
- * Pull Request row helper
- */
-export function createPullRequestRow(params: {
-  jobId: string;
-  repo: string;
-  prNumber: number;
-  url: string;
-  status: string;
-  headBranch: string;
-  baseBranch: string;
-}) {
-  return prisma.pullRequest.create({ data: params });
-}
-
 export * from '@prisma/client';
-
-/**
- * Convenience wrapper that returns a thread along with `modelMessages`
- * already converted via the AI-SDK helper.
- */
-export async function getThreadWithModelMessages(threadId: string) {
-  const thread = await getThread(threadId);
-  if (!thread) return null;
-
-  return {
-    ...thread,
-    modelMessages: thread.messages
-      .filter((m) => ['user', 'assistant', 'system'].includes(m.role))
-      .map((m) => ({
-        role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content,
-      })),
-  };
-}

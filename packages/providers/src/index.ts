@@ -1,7 +1,7 @@
 import { DefaultCodegenModel, DefaultPlannerModel, JobStatus } from '@ifi/shared'
 
 // Vercel AI SDK v5
-import { generateText, type ModelMessage, streamText, tool } from 'ai'
+import { generateText, type ModelMessage, streamText, type StreamTextOnFinishCallback, tool } from 'ai'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
@@ -216,10 +216,7 @@ function createDraftSpecTool(mcptool: any) {
         if (!thread) {
           return { error: true, message: `Thread ${threadId} not found` };
         }
-        const modelMessages: ModelMessage[] = thread.messages.map((m) => ({
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
-        }));
+        const modelMessages = thread.chat as ModelMessage[];
         const content = await draftSpecFromMessages(modelMessages);
 
         let title = 'Draft Spec';
@@ -338,12 +335,12 @@ function createGetBranchesTool(mcptool: any) {
 /**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
  */
-export async function plan(
-  prompt: string,
-  previousMessages?: ModelMessage[],
-  onStepFinish?: (step: any) => void,
-  config: Partial<ProviderConfig> = {}
-) {
+export async function plan({ messages, onFinish, config = {} }:
+                           {
+                             messages: ModelMessage[],
+                             onFinish?: StreamTextOnFinishCallback<any>
+                             config?: Partial<ProviderConfig>
+                           }) {
   try {
 
     const mergedConfig = { ...defaultConfig, ...config };
@@ -411,20 +408,6 @@ General guidelines:
 `,
     };
 
-    // Create message array with context from previous messages if provided
-    const userMessage: ModelMessage = { role: 'user', content: prompt };
-    const messages: ModelMessage[] = previousMessages
-      ? [systemMessage, ...previousMessages, userMessage]
-      : [systemMessage, userMessage];
-
-    console.log(
-      `[plan] 💬 Message array prepared (size=${messages.length})`,
-    );
-
-    /* --------------------------------------------------------------- */
-    /* 6)  streamText invocation                                       */
-    /* --------------------------------------------------------------- */
-    const streamStart = Date.now();
     console.log(`[plan] 🚀 Calling streamText(model="${mergedConfig.plannerModel}") …`);
 
     // Delegate
@@ -432,7 +415,7 @@ General guidelines:
       model: openrouter(mergedConfig.plannerModel),
       messages,
       tools,
-      onStepFinish,
+      onFinish,
       stopWhen: (response: any) => response.toolCalls?.some(
         (call: { toolName?: string }) => call.toolName === 'reportCompletion',
       ),

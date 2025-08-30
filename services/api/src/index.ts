@@ -3,20 +3,17 @@ import Redis from 'ioredis';
 import {
   createThread,
   getThread,
-  addMessage,
+  saveThread,
   getJob,
-  /* multi-spec helpers */
-  getActiveThread,
   getThreadSpecs,
   updateThreadState,
-  createUpdateSpec,
-} from '@ifi/db';
+  createUpdateSpec, getThreads,
+} from '@ifi/db'
 import {
   plan,
 } from '@ifi/providers';
-
-/* Thread state enum */
 import { ThreadState } from '@ifi/shared';
+import { convertToModelMessages, type UIMessage } from 'ai'
 
 // Direct Prisma client (for ad-hoc queries in this file)
 import { prisma } from '@ifi/db';
@@ -131,14 +128,8 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   try {
     console.log("[chat] ▶️  Incoming /v1/chat/messages");
 
-    const { threadId, input } = req.body || {};
-
-    if (typeof input !== 'string' || !input.trim()) {
-      console.log(
-        `[chat] ❌ Validation failed – missing input string`,
-      );
-      return res.status(400).json({ error: 'input is required' });
-    }
+    const { threadId, messages }: { threadId: string, messages: UIMessage[] } = req.body || {};
+    const modelMessages = convertToModelMessages(messages);
 
     // Create or get thread
     let thread;
@@ -150,66 +141,17 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
       }
       console.log(`[chat] 📂 Loaded existing thread ${threadId}`);
     } else {
-      // Extract a title from the first ~50 chars of input
-      const title = input.substring(0, 50) + (input.length > 50 ? '...' : '');
-      thread = await createThread({ title });
+      const title = 'Sample title until i summarize later'
+      thread = await createThread({ title, chat: modelMessages });
       console.log(
         `[chat] 🆕 Created new thread ${thread.id} with title="${title}"`,
       );
     }
 
-    // Collect existing messages (ordered asc from getThread helper)
-    // These will be used as context for the next plan() call
-    const messages: ModelMessage[] = thread.messages
-      ? thread.messages
-          .filter(
-            (m: { role: string }) =>
-              ['user', 'assistant', 'system', 'tool'].includes(m.role)
-          )
-          .map((m: { role: string; content: string }) => ({
-            // Narrow the string to the exact literal type union expected by the provider
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: m.content,
-          }))
-      : [];
-
-    console.log(
-      `[chat] 💬 Built context with ${messages.length} previous message(s)`,
-    );
-
-    // Save user message
-    await addMessage({
-      threadId: thread.id,
-      role: 'user',
-      content: input,
-    });
-
-    console.log(`[chat] 📝 Saved user message, calling plan() ...`);
-
     // Pass prior messages to retain context (exclude the one we just added)
-    const stream = await plan(input, messages, async (response) => {
-      // -------------------------------------------------------------
-      //  STREAM CALLBACK – fires for *each* chunk/tool call returned
-      // -------------------------------------------------------------
-      console.log("[chat] 📡 Stream callback invoked");
-
-      if (response.text) {
-        try {
-          console.log(`[chat] 💾 Saving assistant message (threadId=${thread.id})`);
-          await addMessage({
-            threadId: thread.id,
-            role: 'assistant',
-            content: response.text + '\n' + response.content,
-            tokensPrompt: response.usage?.inputTokens,
-            tokensCompletion: response.usage?.outputTokens,
-            costUsd: response.usage?.totalTokens ? response.usage.totalTokens * 0.00001 : undefined, // Adjust cost calculation as needed
-          });
-          console.log(`[chat] ✅ Assistant message saved successfully`);
-        } catch (error) {
-          console.error('Error saving assistant message:', error);
-        }
-      }
-    });
+    const stream = await plan({ messages: modelMessages, onFinish: async (result) => {
+      await saveThread({ threadId, chat: [...modelMessages, ...result.response.messages ]})
+    }});
 
     console.log("[chat] ✅ plan() resolved");
 
@@ -229,29 +171,13 @@ app.get('/v1/threads', async (_req: Request, res: Response) => {
   console.log(`[threads] ▶️  Incoming /v1/threads`);
   try {
     console.log(`[threads] 📂 Loaded existing threads`);
-    const threads = await prisma.thread.findMany({
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        messages: {
-          take: 1,
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    });
+    const threads = await getThreads()
 
     const payload = threads.map((t) => ({
       id: t.id,
       title: t.title,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
-      lastMessage: t.messages?.[0]
-        ? {
-            id: t.messages[0].id,
-            role: t.messages[0].role,
-            content: t.messages[0].content,
-            createdAt: t.messages[0].createdAt,
-          }
-        : null,
     }));
 
     console.log(`[threads] 📂 returning ${payload.length} threads`);
@@ -280,12 +206,7 @@ app.get('/v1/thread/:id', async (req: Request, res: Response) => {
       title: thread.title,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
-      messages: thread.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt,
-      })),
+      chat: thread.chat
     };
 
     console.log(`[thread] ▶️  Returning thread ${id}`)
@@ -328,19 +249,8 @@ app.get('/v1/jobs/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    // Get latest PR if any
-    const pr = await prisma.pullRequest.findFirst({
-      where: { jobId: id },
-      orderBy: { createdAt: 'desc' },
-    });
-
     return res.status(200).json({
       ...job,
-      pr: pr ? {
-        url: pr.url,
-        number: pr.prNumber,
-        status: pr.status,
-      } : undefined,
     });
   } catch (err) {
     console.error('GET /v1/jobs/:id error:', err);

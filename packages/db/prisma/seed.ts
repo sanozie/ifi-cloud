@@ -11,32 +11,7 @@ async function main() {
   const prisma = new PrismaClient();
   
   try {
-    // Check if there are any existing threads
-    const threadCount = await prisma.thread.count();
-    
-    if (threadCount === 0) {
-      console.log('No threads found, creating sample thread...');
-      
-      // Create a welcome thread
-      const thread = await prisma.thread.create({
-        data: {
-          title: 'Welcome to IFI',
-        },
-      });
-      
-      // Add a welcome message to the thread
-      await prisma.message.create({
-        data: {
-          threadId: thread.id,
-          role: 'assistant',
-          content: 'Welcome to IFI! I can help you with GitHub repositories, Notion workspaces, and coding tasks. How can I assist you today?',
-        },
-      });
-      
-      console.log(`Created sample thread with ID: ${thread.id}`);
-    } else {
-      console.log(`Found ${threadCount} existing threads, skipping seed.`);
-    }
+    console.log('Testing connections')
   } catch (error) {
     console.error('Error seeding database:', error);
     throw error;
