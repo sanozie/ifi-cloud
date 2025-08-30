@@ -128,7 +128,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
   try {
     console.log("[chat] ▶️  Incoming /v1/chat/messages");
 
-    const { threadId, messages }: { threadId: string, messages: UIMessage[] } = req.body || {};
+    let { threadId, messages }: { threadId: string, messages: UIMessage[] } = req.body || {};
     const modelMessages = convertToModelMessages(messages);
 
     // Create or get thread
@@ -143,6 +143,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     } else {
       const title = 'Sample title until i summarize later'
       thread = await createThread({ title, chat: modelMessages });
+      threadId = thread.id;
       console.log(
         `[chat] 🆕 Created new thread ${thread.id} with title="${title}"`,
       );
