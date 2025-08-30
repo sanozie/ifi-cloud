@@ -26,7 +26,6 @@ exports.upsertUserByClerk = upsertUserByClerk;
 exports.getLatestDraftSpec = getLatestDraftSpec;
 exports.upsertDraftSpec = upsertDraftSpec;
 exports.finalizeSpec = finalizeSpec;
-exports.createPullRequestRow = createPullRequestRow;
 exports.upsertDeviceToken = upsertDeviceToken;
 const client_1 = require("@prisma/client");
 exports.prisma = global.prisma || new client_1.PrismaClient();
@@ -205,12 +204,6 @@ async function finalizeSpec(threadId) {
             status: 'ready',
         },
     });
-}
-/**
- * Pull Request row helper
- */
-function createPullRequestRow(params) {
-    return exports.prisma.pullRequest.create({ data: params });
 }
 /**
  * Device token upsert
