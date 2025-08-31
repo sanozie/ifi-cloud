@@ -19,6 +19,129 @@ import { convertToModelMessages, type UIMessage } from 'ai'
 import { prisma } from '@ifi/db';
 import type { ModelMessage } from 'ai'
 
+// Helper: convert ModelMessage[] to UIMessage[] for client consumption (preserve parts)
+function convertModelMessagesToUIMessages(messages: ModelMessage[] | null | undefined): UIMessage[] {
+  if (!messages || !Array.isArray(messages)) return [];
+
+  const inferMediaTypeFromUrl = (url?: string): string | undefined => {
+    if (!url) return undefined;
+    const lower = url.toLowerCase();
+    if (lower.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg)(\?|$)/)) return 'image/' + (lower.split('.').pop()!.split('?')[0]);
+    if (lower.match(/\.(mp4|webm|mov)(\?|$)/)) return 'video/' + (lower.split('.').pop()!.split('?')[0]);
+    if (lower.match(/\.(mp3|wav|m4a|ogg)(\?|$)/)) return 'audio/' + (lower.split('.').pop()!.split('?')[0]);
+    if (lower.match(/\.(pdf)(\?|$)/)) return 'application/pdf';
+    if (lower.match(/\.(txt|md)(\?|$)/)) return 'text/plain';
+    return undefined;
+  };
+
+  const toParts = (content: any): any[] => {
+    // UIMessage parts array
+    const parts: any[] = [];
+
+    if (content == null) return parts;
+
+    if (typeof content === 'string') {
+      parts.push({ type: 'text', text: content });
+      return parts;
+    }
+
+    if (!Array.isArray(content)) {
+      // Unknown structure -> stringify as text
+      try {
+        parts.push({ type: 'text', text: JSON.stringify(content) });
+      } catch {
+        parts.push({ type: 'text', text: String(content) });
+      }
+      return parts;
+    }
+
+    for (const p of content) {
+      if (!p || typeof p !== 'object') continue;
+
+      // Text-like
+      if (typeof (p as any).text === 'string' && ((p as any).type === undefined || (p as any).type === 'text')) {
+        parts.push({ type: 'text', text: (p as any).text });
+        continue;
+      }
+
+      // Image/File-like
+      if ((p as any).type === 'image' || (p as any).type === 'file') {
+        const url = (p as any).url || (p as any).image_url || (p as any).image?.url || (p as any).data?.url;
+        const mediaType = (p as any).mediaType || (p as any).mimeType || inferMediaTypeFromUrl(url) || 'application/octet-stream';
+        const filename = (p as any).name || (p as any).filename;
+        if (typeof url === 'string') {
+          parts.push({ type: 'file', mediaType, filename, url });
+          continue;
+        }
+      }
+
+      // Tool call (assistant requesting a tool)
+      if ((p as any).type === 'tool-call' || (p as any).toolName && (p as any).toolCallId && (p as any).args !== undefined) {
+        const toolName = (p as any).toolName || 'unknown';
+        const toolCallId = (p as any).toolCallId || (p as any).id || `${toolName}-${Math.random().toString(36).slice(2)}`;
+        const input = (p as any).args ?? {};
+        parts.push({
+          type: `tool-${toolName}`,
+          toolCallId,
+          state: 'input-available',
+          input,
+        });
+        continue;
+      }
+
+      // Tool result (result from tool execution)
+      if ((p as any).type === 'tool-result' || (p as any).toolName && (p as any).toolCallId && ((p as any).result !== undefined || (p as any).error !== undefined)) {
+        const toolName = (p as any).toolName || 'unknown';
+        const toolCallId = (p as any).toolCallId || (p as any).id || `${toolName}-${Math.random().toString(36).slice(2)}`;
+        const output = (p as any).result ?? (p as any).output;
+        const errorText = (p as any).errorText ?? ((p as any).error ? String((p as any).error) : undefined);
+        if (errorText) {
+          parts.push({
+            type: `tool-${toolName}`,
+            toolCallId,
+            state: 'output-error',
+            input: (p as any).args ?? {},
+            errorText,
+          });
+        } else {
+          parts.push({
+            type: `tool-${toolName}`,
+            toolCallId,
+            state: 'output-available',
+            input: (p as any).args ?? {},
+            output,
+          });
+        }
+        continue;
+      }
+
+      // Fallback: stringify unknown part
+      try {
+        parts.push({ type: 'text', text: JSON.stringify(p) });
+      } catch {
+        parts.push({ type: 'text', text: String(p) });
+      }
+    }
+
+    return parts;
+  };
+
+  return messages
+    .filter((m: any) => !!m)
+    .map((m: any) => {
+      let role: 'system' | 'user' | 'assistant' = m.role;
+      // UIMessage does not have a 'tool' role; map tool messages to assistant with tool parts
+      if (m.role === 'tool') {
+        role = 'assistant';
+      }
+      return {
+        id: m.id ?? undefined,
+        role,
+        parts: toParts(m.content),
+      } as UIMessage;
+    });
+}
+
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -131,7 +254,7 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     let { threadId, messages }: { threadId: string, messages: UIMessage[] } = req.body || {};
     const modelMessages = convertToModelMessages(messages);
 
-    // Create or get thread
+    // Create or get a thread
     let thread;
     if (threadId) {
       thread = await getThread(threadId);
@@ -203,12 +326,13 @@ app.get('/v1/thread/:id', async (req: Request, res: Response) => {
 
     // Return only the fields expected by the iOS client
     const payload = {
-      id: thread.id,
-      title: thread.title,
-      createdAt: thread.createdAt,
-      updatedAt: thread.updatedAt,
-      chat: thread.chat
-    };
+        id: thread.id,
+        title: thread.title,
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        // Convert stored model messages to UI messages for the client
+        chat: convertModelMessagesToUIMessages(thread.chat as unknown as ModelMessage[])
+      };
 
     console.log(`[thread] ▶️  Returning thread ${id}`)
     return res.status(200).json(payload);
