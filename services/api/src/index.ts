@@ -364,6 +364,32 @@ app.get('/v1/thread/:id', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /v1/thread/:id – update thread title
+app.put('/v1/thread/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body || {};
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Invalid title' });
+    }
+
+    const updated = await prisma.thread.update({
+      where: { id },
+      data: { title: title.trim() },
+      select: { id: true, title: true, createdAt: true, updatedAt: true },
+    });
+
+    return res.status(200).json(updated);
+  } catch (err: any) {
+    if (err.code === 'P2025') {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+    console.error('PUT /v1/thread/:id error:', err);
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // DELETE /v1/threads/:id – delete thread and its messages
 app.delete('/v1/thread/:id', async (req: Request, res: Response) => {
   try {
