@@ -331,6 +331,38 @@ function createGetBranchesTool(mcptool: any) {
   }) as any;
 }
 
+function createUpdateTitleTool(mcptool: any) {
+  return mcptool({
+    name: 'update_title',
+    description:
+      'Update the title of a conversation thread. Use this sparingly when the overall topic or goal changes significantly.',
+    inputSchema: z.object({
+      threadId: z.string().describe('ID of the thread to rename'),
+      title: z.string().min(3).max(120).describe('A concise, human-friendly title that summarizes the thread'),
+    }),
+    async execute({ threadId, title }: { threadId: string; title: string }) {
+      try {
+        // Update via DB to avoid cross-HTTP calls
+        const { prisma } = await import('@ifi/db');
+        const trimmed = title.trim();
+        if (!trimmed) {
+          return { error: true, message: 'Title cannot be empty' };
+        }
+        const updated = await prisma.thread.update({
+          where: { id: threadId },
+          data: { title: trimmed },
+          select: { id: true, title: true, updatedAt: true },
+        });
+        return { id: updated.id, title: updated.title, updatedAt: updated.updatedAt };
+      } catch (err: any) {
+        if (err?.code === 'P2025') {
+          return { error: true, message: 'Thread not found' };
+        }
+        return { error: true, message: `update_title failed: ${err.message}` };
+      }
+    },
+  }) as any;
+}
 
 /**
  * Stream a plan using OpenAI (UIMessageStreamResponse compatible)
@@ -371,6 +403,7 @@ export async function plan({ messages, onFinish, config = {} }:
       get_current_branch: getCurrentBranchTool as any,
       checkout_branch: checkoutBranchTool as any,
       get_branches: getBranchesTool as any,
+      update_title: createUpdateTitleTool(mcptool) as any,
     } as const;
 
     console.log(`[plan] 🛠️  Tools configured: ${Object.keys(tools).join(', ')}`);
@@ -405,6 +438,13 @@ General guidelines:
 • Keep all normal conversation messages concise and focused.  
 • NEVER leak internal reasoning or tool call JSON to the user—only properly formatted tool calls.  
 • Do NOT output any completion text directly; the client UI renders results from tools.  
+
+Thread title management:
+• When a brand-new thread is created from a user’s first prompt, propose an initial concise title and CALL the \`update_title\` tool once to set it. As more messages arrive and the user’s true intent becomes clearer, you may refine the title – but only when there is a substantial change in scope or objective.
+• You may CALL the \`update_title\` tool to rename the current thread when there is a substantial shift in topic, goal, or deliverable. Avoid updating after every single message.
+• Choose a concise, human-friendly title that accurately represents the thread overall. Prefer specific, outcome-oriented phrasing (e.g., "Implement long-press rename for threads") over vague titles.
+• If a thread identifier is provided in system context (e.g., "Thread Context: threadId=…"), use that threadId when calling update_title.
+• If no threadId is known, do not guess; continue planning without renaming.
 `,
     };
 

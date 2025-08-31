@@ -295,7 +295,8 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     }
 
     // Pass prior messages to retain context (exclude the one we just added)
-    const stream = await plan({ messages: modelMessages, onFinish: async (result) => {
+    const planningContext: ModelMessage = { role: 'system', content: `Thread Context: threadId=${threadId}` };
+    const stream = await plan({ messages: [planningContext, ...modelMessages], onFinish: async (result) => {
       await saveThread({ threadId, chat: [...modelMessages, ...result.response.messages ]})
     }});
 
