@@ -183,6 +183,10 @@ function createSearchCodebaseTool(mcptool: any) {
           stdoutPreview: stdout.substring(0, 200) + (stdout.length > 200 ? '...' : '')
         });
 
+        console.log('[searchCodebaseTool] Continue CLI output:', {
+          output: stdout.trim()
+        });
+
         return { output: stdout.trim() };
       } catch (err: any) {
         console.error('[searchCodebaseTool] ❌ searchCodebase execution failed:', {
@@ -392,6 +396,7 @@ export async function plan({ messages, onFinish, config = {} }:
     const getCurrentBranchTool = createGetCurrentBranchTool(mcptool);
     const checkoutBranchTool = createCheckoutBranchTool(mcptool);
     const getBranchesTool = createGetBranchesTool(mcptool);
+    const updateTitleTool = createUpdateTitleTool(mcptool);
 
     // Assemble tools while forcing lightweight types to avoid deep inference
     const tools = {
@@ -403,7 +408,7 @@ export async function plan({ messages, onFinish, config = {} }:
       get_current_branch: getCurrentBranchTool as any,
       checkout_branch: checkoutBranchTool as any,
       get_branches: getBranchesTool as any,
-      update_title: createUpdateTitleTool(mcptool) as any,
+      update_title: updateTitleTool as any,
     } as const;
 
     console.log(`[plan] 🛠️  Tools configured: ${Object.keys(tools).join(', ')}`);
@@ -453,7 +458,7 @@ Thread title management:
     // Delegate
     return streamText({
       model: openrouter(mergedConfig.plannerModel),
-      messages,
+      messages: [systemMessage, ...messages],
       tools,
       onFinish,
       stopWhen: (response: any) => response.toolCalls?.some(
