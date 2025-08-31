@@ -159,10 +159,11 @@ function createSearchCodebaseTool(mcptool: any) {
         }
 
         // Prepare and execute the Continue CLI command
-        const rawCmd = `cn -p "${query.replace(/\"/g, '\\"')}"`;
+        const escaped = query.replace(/\"/g, '\\"');
+        const rawCmd = `cn -p "${escaped}"`;
         console.log('[searchCodebaseTool] ⚡ Preparing Continue CLI command:', {
           originalQuery: query.substring(0, 100) + (query.length > 100 ? '...' : ''),
-          escapedQuery: query.replace(/\"/g, '\\"').substring(0, 100) + (query.length > 100 ? '...' : ''),
+          escapedQuery: escaped.substring(0, 100) + (query.length > 100 ? '...' : ''),
           command: rawCmd,
           workingDirectory: repoDir,
           maxBuffer: 5_000_000
@@ -170,24 +171,63 @@ function createSearchCodebaseTool(mcptool: any) {
 
         console.log('[searchCodebaseTool] 🚀 Executing Continue CLI command...');
         const execStart = Date.now();
-        
-        const { stdout } = await execAsync(rawCmd, { 
-          cwd: repoDir, 
-          maxBuffer: 5_000_000 
+
+        // First attempt: direct invocation, capture both stdout and stderr
+        const { stdout, stderr } = await execAsync(rawCmd, {
+          cwd: repoDir,
+          maxBuffer: 5_000_000,
+          env: { ...process.env, CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' }
         });
-        
-        const execTime = Date.now() - execStart;
+
+        let out = (stdout || '').trim();
+        let errOut = (stderr || '').trim();
+        let finalOutput = out || errOut; // prefer stdout; fall back to stderr
+
+        let execTime = Date.now() - execStart;
         console.log('[searchCodebaseTool] ✅ Continue CLI execution completed:', {
           executionTimeMs: execTime,
-          stdoutLength: stdout.length,
-          stdoutPreview: stdout.substring(0, 200) + (stdout.length > 200 ? '...' : '')
+          stdoutLength: (stdout || '').length,
+          stderrLength: (stderr || '').length,
+          stdoutPreview: (stdout || '').substring(0, 200) + ((stdout || '').length > 200 ? '...' : ''),
+          stderrPreview: (stderr || '').substring(0, 200) + ((stderr || '').length > 200 ? '...' : ''),
         });
+
+        // If we still have no output, retry via a pseudo-TTY to coax interactive CLIs to print
+        if (!finalOutput) {
+          const ttyCmd = `script -q -c "cn -p \"${escaped}\"" /dev/null`;
+          console.log('[searchCodebaseTool] ⚠️ No output from direct run, retrying with pseudo-TTY:', { ttyCmd });
+          const start2 = Date.now();
+          try {
+            const { stdout: ttyOut, stderr: ttyErr } = await execAsync(ttyCmd, {
+              cwd: repoDir,
+              maxBuffer: 5_000_000,
+              shell: '/bin/bash'
+            });
+            execTime = Date.now() - start2;
+            out = (ttyOut || '').trim();
+            errOut = (ttyErr || '').trim();
+            finalOutput = out || errOut;
+            console.log('[searchCodebaseTool] ✅ Pseudo-TTY execution completed:', {
+              executionTimeMs: execTime,
+              stdoutLength: (ttyOut || '').length,
+              stderrLength: (ttyErr || '').length,
+              outputPreview: (finalOutput || '').substring(0, 200) + ((finalOutput || '').length > 200 ? '...' : ''),
+            });
+          } catch (e: any) {
+            console.log('[searchCodebaseTool] ❌ Pseudo-TTY execution failed:', {
+              message: e.message,
+              code: e.code,
+              stack: e.stack?.substring(0, 200)
+            });
+          }
+        }
 
         console.log('[searchCodebaseTool] Continue CLI output:', {
-          output: stdout.trim()
+          channel: out ? 'stdout' : (errOut ? 'stderr' : 'none'),
+          output: finalOutput
         });
 
-        return { output: stdout.trim() };
+        return { output: finalOutput };
       } catch (err: any) {
         console.error('[searchCodebaseTool] ❌ searchCodebase execution failed:', {
           message: err.message,

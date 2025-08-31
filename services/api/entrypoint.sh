@@ -121,8 +121,8 @@ test_continue_repo_summary() {
 
   log_info "Attempting to generate repository summary using Continue CLI headless mode"
 
-  # Test Continue CLI with headless mode using -p flag and timeout
-  if timeout 90 cn -p "Please provide a brief summary of this repository. What is its purpose, main technologies used, and key components? Focus on the README, package.json, and main source files." > /tmp/continue_test_output.txt 2>&1; then
+  # Test Continue CLI with headless mode using -p flag and timeout (wrapped in pseudo-TTY)
+  if script -q -c "timeout 90 cn -p \"Please provide a brief summary of this repository. What is its purpose, main technologies used, and key components? Focus on the README, package.json, and main source files.\"" /dev/null > /tmp/continue_test_output.txt 2>&1; then
     # Check if we got a valid response
     if [ -s /tmp/continue_test_output.txt ]; then
       output_size=$(wc -c < /tmp/continue_test_output.txt)
