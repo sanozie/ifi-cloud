@@ -252,7 +252,29 @@ app.post('/v1/chat/messages', async (req: Request, res: Response) => {
     console.log("[chat] ▶️  Incoming /v1/chat/messages");
 
     let { threadId, messages }: { threadId: string, messages: UIMessage[] } = req.body || {};
-    const modelMessages = convertToModelMessages(messages);
+
+    // Sanitize incoming UI messages: drop unsupported tool part states before conversion
+    const sanitizeUIMessages = (msgs: UIMessage[] | undefined): UIMessage[] => {
+      if (!Array.isArray(msgs)) return [];
+      return msgs.map((m: any) => {
+        const parts = Array.isArray(m?.parts)
+          ? m.parts.filter((p: any) => {
+              if (!p || typeof p !== 'object') return true;
+              const t = (p as any).type;
+              const s = (p as any).state;
+              if (typeof t === 'string' && t.startsWith('tool-')) {
+                // Remove tool parts that represent pending/input-only calls not supported by converter
+                if (s === 'input-available' || s === 'input-streaming') return false;
+              }
+              return true;
+            })
+          : m?.parts;
+        return { ...m, parts };
+      });
+    };
+
+    const sanitizedMessages = sanitizeUIMessages(messages);
+    const modelMessages = convertToModelMessages(sanitizedMessages as any);
 
     // Create or get a thread
     let thread;
