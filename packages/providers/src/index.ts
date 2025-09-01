@@ -236,6 +236,38 @@ function createSearchCodebaseTool(mcptool: any) {
           output: finalOutput
         });
 
+        // If still no output, provide diagnostics rather than returning empty
+        if (!finalOutput) {
+          console.log('[searchCodebaseTool] ⚠️ Continue CLI produced empty output; collecting diagnostics');
+          let diagVersion = '';
+          let diagHelp = '';
+          try {
+            const { stdout: vOut = '', stderr: vErr = '' } = await execAsync('cn --version', { cwd: repoDir, shell: '/bin/bash' });
+            diagVersion = (vOut || vErr || '').trim();
+          } catch (e: any) {
+            diagVersion = `version check failed: ${e.message}`;
+          }
+          try {
+            const { stdout: hOut = '', stderr: hErr = '' } = await execAsync('cn --help', { cwd: repoDir, shell: '/bin/bash', maxBuffer: 200_000 });
+            diagHelp = (hOut || hErr || '').substring(0, 300).trim();
+          } catch (e: any) {
+            diagHelp = `help check failed: ${e.message}`;
+          }
+          const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
+          const msg = [
+            '⚠️ Continue CLI returned no output. Possible causes:',
+            '- Missing or invalid ANTHROPIC_API_KEY (required by Continue config).',
+            "- Continue CLI waiting for interactive input that doesn't print in headless mode.",
+            '- Misconfigured ~/.continue/config.yaml.',
+            '',
+            `Env ANTHROPIC_API_KEY present: ${hasKey}`,
+            `cn --version: ${diagVersion || 'n/a'}`,
+            `cn --help (preview): ${diagHelp || 'n/a'}`,
+          ].join('\n');
+          console.log('[searchCodebaseTool] 🧪 Diagnostics summary:', { hasKey, diagVersion: diagVersion?.substring(0, 100), diagHelpPreview: diagHelp?.substring(0, 100) });
+          return { warning: true, output: msg } as any;
+        }
+
         return { output: finalOutput };
       } catch (err: any) {
         console.error('[searchCodebaseTool] ❌ searchCodebase execution failed:', {
