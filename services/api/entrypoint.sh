@@ -126,7 +126,7 @@ test_continue_repo_summary() {
   : > "$OUTPUT_FILE"
 
   # 1) Try direct non-TTY first (capture both stdout and stderr)
-  if timeout 90 cn -p "$PROMPT" > "$OUTPUT_FILE" 2>&1; then
+  if timeout 90 cn -p --verbose "$PROMPT" > "$OUTPUT_FILE" 2>&1; then
     : # proceed to validation below
   else
     log_warn "Direct Continue CLI run failed or produced no output; attempting pseudo-TTY fallback"
@@ -139,7 +139,7 @@ test_continue_repo_summary() {
     if command -v script >/dev/null 2>&1; then
       if script -V 2>/dev/null | grep -qi "util-linux"; then
         # Linux util-linux script
-        TTY_CMD=(script -q -c "timeout 90 cn -p \"$PROMPT\"" /dev/null)
+        TTY_CMD=(script -q -c "timeout 90 cn --verbose -p \"$PROMPT\"" /dev/null)
       else
         # BSD/macOS script syntax
         TTY_CMD=(script -q /dev/null /bin/bash -lc "timeout 90 cn -p \"$PROMPT\"")
@@ -162,14 +162,43 @@ test_continue_repo_summary() {
       log_info "Continue CLI successfully generated repository summary ($output_size characters)"
       log_info "Summary preview: $(head -c 300 "$OUTPUT_FILE" | tr '\n' ' ')..."
     else
-      log_warn "Continue CLI responded but with very short output"
-      log_warn "Response: $(cat "$OUTPUT_FILE")"
+      if [ "${CONTINUE_STRICT:-false}" = "true" ]; then
+        log_warn "Continue CLI responded but with very short output"
+        log_warn "Response: $(cat "$OUTPUT_FILE")"
+      else
+        log_info "Continue CLI responded with short output (non-strict mode)"
+      fi
     fi
   else
-    log_warn "Continue CLI responded but with empty output"
-    # Provide diagnostics
-    log_warn "Diagnostics: Check ANTHROPIC_API_KEY and ~/.continue/config.yaml. 'cn --help' output follows (first 200 chars):"
-    cn --help 2>&1 | head -c 200 | sed 's/.*/[WARN] &/' || true
+    if [ "${CONTINUE_STRICT:-false}" = "true" ]; then
+      log_warn "Continue CLI responded but with empty output"
+      # Provide diagnostics
+      log_warn "Diagnostics: Check ANTHROPIC_API_KEY and ~/.continue/config.yaml. 'cn --help' output follows (first 200 chars):"
+      cn --help 2>&1 | head -c 200 | sed 's/.*/[WARN] &/' || true
+    else
+      log_info "Continue CLI produced no output (non-strict mode); proceeding without diagnostics"
+    fi
+  fi
+
+  # Debug: dump the raw contents of the output file when requested
+  if [ "${CONTINUE_DEBUG:-false}" = "true" ] || [ "${CONTINUE_STRICT:-false}" = "true" ]; then
+    if [ -f "$OUTPUT_FILE" ]; then
+      log_info "----- BEGIN Continue CLI raw output dump ($OUTPUT_FILE) -----"
+      if [ -s "$OUTPUT_FILE" ]; then
+        # Cap to 10KB to avoid flooding logs
+        head -c 10240 "$OUTPUT_FILE" | sed 's/.*/[CONTINUE RAW] &/' || true
+        # If file is longer, note truncation
+        file_size=$(wc -c < "$OUTPUT_FILE" || echo 0)
+        if [ "$file_size" -gt 10240 ]; then
+          log_info "[CONTINUE RAW] ... (truncated, total ${file_size} bytes)"
+        fi
+      else
+        log_info "[CONTINUE RAW] (file exists but is empty)"
+      fi
+      log_info "----- END Continue CLI raw output dump -----"
+    else
+      log_info "[CONTINUE RAW] Output file not found: $OUTPUT_FILE"
+    fi
   fi
 
   # Clean up and return to original directory
