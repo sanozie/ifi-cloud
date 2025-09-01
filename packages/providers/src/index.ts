@@ -194,8 +194,15 @@ function createSearchCodebaseTool(mcptool: any) {
 
         // If we still have no output, retry via a pseudo-TTY to coax interactive CLIs to print
         if (!finalOutput) {
-          const ttyCmd = `script -q -c "cn -p \"${escaped}\"" /dev/null`;
-          console.log('[searchCodebaseTool] ⚠️ No output from direct run, retrying with pseudo-TTY:', { ttyCmd });
+          const innerCmd = `cn -p "${escaped}"`;
+          const isDarwin = process.platform === 'darwin';
+          // On Linux (util-linux): script -q -c 'cmd' /dev/null
+          // On macOS (BSD script): script -q /dev/null /bin/bash -lc 'cmd'
+          const ttyCmd = isDarwin
+            ? `script -q /dev/null /bin/bash -lc '${innerCmd.replace(/'/g, `'"'"'`)}'`
+            : `script -q -c '${innerCmd.replace(/'/g, `'"'"'`)}' /dev/null`;
+
+          console.log('[searchCodebaseTool] ⚠️ No output from direct run, retrying with pseudo-TTY:', { ttyCmd, platform: process.platform });
           const start2 = Date.now();
           try {
             const { stdout: ttyOut, stderr: ttyErr } = await execAsync(ttyCmd, {
@@ -212,11 +219,13 @@ function createSearchCodebaseTool(mcptool: any) {
               stdoutLength: (ttyOut || '').length,
               stderrLength: (ttyErr || '').length,
               outputPreview: (finalOutput || '').substring(0, 200) + ((finalOutput || '').length > 200 ? '...' : ''),
+              platform: process.platform
             });
           } catch (e: any) {
             console.log('[searchCodebaseTool] ❌ Pseudo-TTY execution failed:', {
               message: e.message,
               code: e.code,
+              platform: process.platform,
               stack: e.stack?.substring(0, 200)
             });
           }
