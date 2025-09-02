@@ -311,7 +311,7 @@ name: Ifi
 version: 1.0.3
 schema: v1
 models:
-  - uses: anthropic/claude-4-sonnet
+  - uses: claude-3-5-sonnet-20241022
     with:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     override:
@@ -320,6 +320,7 @@ models:
 context:
   - uses: continuedev/terminal-context
   - uses: continuedev/file-context
+  - uses: continuedev/git-diff-context
 mcpServers:
   - uses: upstash/context7-mcp
 
