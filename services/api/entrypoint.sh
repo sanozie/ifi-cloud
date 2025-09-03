@@ -181,24 +181,22 @@ test_continue_repo_summary() {
   fi
 
   # Debug: dump the raw contents of the output file when requested
-  if [ "${CONTINUE_DEBUG:-false}" = "true" ] || [ "${CONTINUE_STRICT:-false}" = "true" ]; then
-    if [ -f "$OUTPUT_FILE" ]; then
-      log_info "----- BEGIN Continue CLI raw output dump ($OUTPUT_FILE) -----"
-      if [ -s "$OUTPUT_FILE" ]; then
-        # Cap to 10KB to avoid flooding logs
-        head -c 10240 "$OUTPUT_FILE" | sed 's/.*/[CONTINUE RAW] &/' || true
-        # If file is longer, note truncation
-        file_size=$(wc -c < "$OUTPUT_FILE" || echo 0)
-        if [ "$file_size" -gt 10240 ]; then
-          log_info "[CONTINUE RAW] ... (truncated, total ${file_size} bytes)"
-        fi
-      else
-        log_info "[CONTINUE RAW] (file exists but is empty)"
+  if [ -f "$OUTPUT_FILE" ]; then
+    log_info "----- BEGIN Continue CLI raw output dump ($OUTPUT_FILE) -----"
+    if [ -s "$OUTPUT_FILE" ]; then
+      # Cap to 10KB to avoid flooding logs
+      head -c 10240 "$OUTPUT_FILE" | sed 's/.*/[CONTINUE RAW] &/' || true
+      # If file is longer, note truncation
+      file_size=$(wc -c < "$OUTPUT_FILE" || echo 0)
+      if [ "$file_size" -gt 10240 ]; then
+        log_info "[CONTINUE RAW] ... (truncated, total ${file_size} bytes)"
       fi
-      log_info "----- END Continue CLI raw output dump -----"
     else
-      log_info "[CONTINUE RAW] Output file not found: $OUTPUT_FILE"
+      log_info "[CONTINUE RAW] (file exists but is empty)"
     fi
+    log_info "----- END Continue CLI raw output dump -----"
+  else
+    log_info "[CONTINUE RAW] Output file not found: $OUTPUT_FILE"
   fi
 
   # Clean up and return to original directory
