@@ -201,9 +201,10 @@ models:
     model: ${PLANNER_MODEL}
     apiBase: https://openrouter.ai/api/v1
     apiKey: ${OPENROUTER_API_KEY}
-    override:
-      roles:
-        - chat
+    capabilities:
+      - tool_use
+    roles:
+      - chat
 context:
   - uses: continuedev/terminal-context
   - uses: continuedev/file-context
