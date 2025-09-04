@@ -196,9 +196,11 @@ name: Ifi
 version: 1.0.7
 schema: v1
 models:
-  - uses: ${PLANNER_MODEL}
-    with:
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+  - name: Sonnet
+    provider: openrouter
+    model: ${PLANNER_MODEL}
+    apiBase: https://openrouter.ai/api/v1
+    apiKey: ${OPENROUTER_API_KEY}
     override:
       roles:
         - chat
