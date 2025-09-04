@@ -74,8 +74,7 @@ function createSearchCodebaseTool(mcptool: any) {
       query: z.string().describe('Natural language question about the codebase'),
       repository: z
         .string()
-        .describe('Optional repository name (folder under /app/services/api/repos). Defaults to first available.')
-        .optional(),
+        .describe('Repository name (folder under /app/services/api/repos)')
     }),
     async execute({ query, repository }: { query: string; repository?: string }) {
       console.log('[searchCodebaseCaptureTool] 🔍 ENTER - Starting capture run');
