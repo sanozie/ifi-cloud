@@ -49,34 +49,34 @@ test_continue_repo_access() {
     return 0
   fi
 
-  if [ ! -d "/repos" ]; then
-    log_warn "No /repos directory found, skipping repository access test"
+  if [ ! -d "$REPOS_ROOT" ]; then
+    log_warn "No $REPOS_ROOT directory found, skipping repository access test"
     return 0
   fi
 
   # Count available repositories
-  repo_count=$(find /repos -maxdepth 1 -type d -name ".git" -parent | wc -l)
+  repo_count=$(find "$REPOS_ROOT" -maxdepth 1 -type d -name ".git" -parent | wc -l)
   if [ "$repo_count" -eq 0 ]; then
     # Alternative count method for repositories
-    repo_count=$(find /repos -maxdepth 1 -type d ! -name "." ! -name ".." | wc -l)
+    repo_count=$(find "$REPOS_ROOT" -maxdepth 1 -type d ! -name "." ! -name ".." | wc -l)
     if [ "$repo_count" -eq 0 ]; then
-      log_warn "No repositories found in /repos directory"
+      log_warn "No repositories found in $REPOS_ROOT directory"
       return 0
     fi
   fi
 
-  log_info "Found $repo_count repositories in /repos"
+  log_info "Found $repo_count repositories in $REPOS_ROOT"
 
   # Test Continue CLI can access the repositories directory
-  if [ -r "/repos" ] && [ -x "/repos" ]; then
-    log_info "Continue CLI should have read/execute access to /repos directory"
+  if [ -r "$REPOS_ROOT" ] && [ -x "$REPOS_ROOT" ]; then
+    log_info "Continue CLI should have read/execute access to $REPOS_ROOT directory"
   else
-    log_error "Continue CLI may not have proper access to /repos directory"
+    log_error "Continue CLI may not have proper access to $REPOS_ROOT directory"
     return 1
   fi
 
   # Test accessing a specific repository
-  first_repo=$(find /repos -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
+  first_repo=$(find "$REPOS_ROOT" -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
   if [ -n "$first_repo" ] && [ -d "$first_repo" ]; then
     log_info "Testing access to repository: $(basename "$first_repo")"
     if [ -r "$first_repo" ] && [ -x "$first_repo" ]; then
@@ -101,13 +101,13 @@ test_continue_repo_summary() {
     return 0
   fi
 
-  if [ ! -d "/repos" ]; then
-    log_warn "No /repos directory found, skipping repository summary test"
+  if [ ! -d "$REPOS_ROOT" ]; then
+    log_warn "No $REPOS_ROOT directory found, skipping repository summary test"
     return 0
   fi
 
   # Find the first available repository
-  first_repo=$(find /repos -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
+  first_repo=$(find "$REPOS_ROOT" -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
   if [ -z "$first_repo" ] || [ ! -d "$first_repo" ]; then
     log_warn "No repositories found for summary test"
     return 0
@@ -218,13 +218,14 @@ else
 fi
 
 #----------------------------------------------------------
-# Create /repos directory (only when repo setup is enabled)
+# Create repos directory under /app/services/api (only when repo setup is enabled)
 #----------------------------------------------------------
+REPOS_ROOT="/app/services/api/repos"
 if [ "$SKIP_REPOS_SETUP" = false ]; then
-  if mkdir -p /repos 2>/dev/null; then
-    log_info "/repos directory is ready"
+  if mkdir -p "$REPOS_ROOT" 2>/dev/null; then
+    log_info "$REPOS_ROOT directory is ready"
   else
-    log_warn "Could not create /repos directory (permission denied). Skipping repository setup."
+    log_warn "Could not create $REPOS_ROOT directory (permission denied). Skipping repository setup."
     SKIP_REPOS_SETUP=true
   fi
 fi
@@ -269,7 +270,7 @@ if [ "$SKIP_REPOS_SETUP" = false ] && [ -n "$GITHUB_REPOS" ]; then
   for repo_url in "${REPOS[@]}"; do
     # Extract repo name from URL (assuming GitHub format)
     repo_name=$(basename "$repo_url" .git)
-    repo_path="/repos/$repo_name"
+    repo_path="$REPOS_ROOT/$repo_name"
     
     log_info "Processing repository: $repo_name"
     
@@ -331,7 +332,7 @@ fi
 # Log repositories that were cloned
 if [ "$SKIP_REPOS_SETUP" = false ]; then
   log_info "Available repositories:"
-  ls -la /repos
+  ls -la "$REPOS_ROOT"
 else
   log_info "Repository setup skipped; no repositories available."
 fi

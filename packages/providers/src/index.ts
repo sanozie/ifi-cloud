@@ -74,7 +74,7 @@ function createSearchCodebaseTool(mcptool: any) {
       repository: z
         .string()
         .describe(
-          'Optional repository name (folder under /repos). Defaults to first available.',
+          'Optional repository name (folder under /app/services/api/repos). Defaults to first available.',
         )
         .optional(),
     }),
@@ -96,7 +96,7 @@ function createSearchCodebaseTool(mcptool: any) {
 
       try {
         // Determine target repo directory (static fs import)
-        const reposDir = '/repos';
+        const reposDir = '/app/services/api/repos';
         console.log('[searchCodebaseTool] 📂 Target repos directory:', reposDir);
 
         let dirEntries: Dirent[] | null = null;
@@ -125,7 +125,7 @@ function createSearchCodebaseTool(mcptool: any) {
             return {
               warning: true,
               message:
-                '📂 The /repos directory does not exist. Repository setup was likely skipped (e.g., during CI).',
+                '📂 The /app/services/api/repos directory does not exist. Repository setup was likely skipped (e.g., during CI).',
             };
           }
           throw e;
@@ -154,7 +154,7 @@ function createSearchCodebaseTool(mcptool: any) {
           return {
             warning: true,
             message:
-              '📂 The /repos directory exists but contains no cloned repositories. Repository setup may have been skipped (e.g., in CI).',
+              '📂 The /app/services/api/repos directory exists but contains no cloned repositories. Repository setup may have been skipped (e.g., in CI).',
           };
         }
 
