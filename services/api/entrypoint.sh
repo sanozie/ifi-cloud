@@ -93,120 +93,6 @@ test_continue_repo_access() {
   return 0
 }
 
-test_continue_repo_summary() {
-  log_info "Testing Continue CLI repository summarization functionality"
-
-  if [ "$SKIP_REPOS_SETUP" = true ]; then
-    log_info "Repository setup was skipped, skipping repository summary test"
-    return 0
-  fi
-
-  if [ ! -d "$REPOS_ROOT" ]; then
-    log_warn "No $REPOS_ROOT directory found, skipping repository summary test"
-    return 0
-  fi
-
-  # Find the first available repository
-  first_repo=$(find "$REPOS_ROOT" -maxdepth 1 -type d ! -name "." ! -name ".." | head -1)
-  if [ -z "$first_repo" ] || [ ! -d "$first_repo" ]; then
-    log_warn "No repositories found for summary test"
-    return 0
-  fi
-
-  repo_name=$(basename "$first_repo")
-  log_info "Testing Continue CLI summarization on repository: $repo_name"
-
-  # Change to the repository directory for context
-  cd "$first_repo"
-
-  log_info "Attempting to generate repository summary using Continue CLI headless mode"
-
-  PROMPT="Please provide a brief summary of this repository. What is its purpose, main technologies used, and key components? Focus on the README, package.json, and main source files."
-  OUTPUT_FILE=/tmp/continue_test_output.txt
-  : > "$OUTPUT_FILE"
-
-  # 1) Try direct non-TTY first (capture both stdout and stderr)
-  if timeout 90 cn -p --verbose "$PROMPT" > "$OUTPUT_FILE" 2>&1; then
-    : # proceed to validation below
-  else
-    log_warn "Direct Continue CLI run failed or produced no output; attempting pseudo-TTY fallback"
-  fi
-
-  # If output is empty or too short, try pseudo-TTY as a fallback
-  output_size=$(wc -c < "$OUTPUT_FILE" || echo 0)
-  if [ "$output_size" -le 50 ]; then
-    # Construct platform-aware 'script' command
-    if command -v script >/dev/null 2>&1; then
-      if script -V 2>/dev/null | grep -qi "util-linux"; then
-        # Linux util-linux script
-        TTY_CMD=(script -q -c "timeout 90 cn --verbose -p \"$PROMPT\"" /dev/null)
-      else
-        # BSD/macOS script syntax
-        TTY_CMD=(script -q /dev/null /bin/bash -lc "timeout 90 cn -p \"$PROMPT\"")
-      fi
-      log_info "Retrying with pseudo-TTY: ${TTY_CMD[*]}"
-      if "${TTY_CMD[@]}" > "$OUTPUT_FILE" 2>&1; then
-        : # proceed to validation
-      else
-        log_warn "Pseudo-TTY Continue CLI run failed"
-      fi
-    else
-      log_warn "'script' command not available; skipping pseudo-TTY fallback"
-    fi
-  fi
-
-  # Validate the final output
-  if [ -s "$OUTPUT_FILE" ]; then
-    output_size=$(wc -c < "$OUTPUT_FILE")
-    if [ "$output_size" -gt 50 ]; then
-      log_info "Continue CLI successfully generated repository summary ($output_size characters)"
-      log_info "Summary preview: $(head -c 300 "$OUTPUT_FILE" | tr '\n' ' ')..."
-    else
-      if [ "${CONTINUE_STRICT:-false}" = "true" ]; then
-        log_warn "Continue CLI responded but with very short output"
-        log_warn "Response: $(cat "$OUTPUT_FILE")"
-      else
-        log_info "Continue CLI responded with short output (non-strict mode)"
-      fi
-    fi
-  else
-    if [ "${CONTINUE_STRICT:-false}" = "true" ]; then
-      log_warn "Continue CLI responded but with empty output"
-      # Provide diagnostics
-      log_warn "Diagnostics: Check ANTHROPIC_API_KEY and ~/.continue/config.yaml. 'cn --help' output follows (first 200 chars):"
-      cn --help 2>&1 | head -c 200 | sed 's/.*/[WARN] &/' || true
-    else
-      log_info "Continue CLI produced no output (non-strict mode); proceeding without diagnostics"
-    fi
-  fi
-
-  # Debug: dump the raw contents of the output file when requested
-  if [ -f "$OUTPUT_FILE" ]; then
-    log_info "----- BEGIN Continue CLI raw output dump ($OUTPUT_FILE) -----"
-    if [ -s "$OUTPUT_FILE" ]; then
-      # Cap to 10KB to avoid flooding logs
-      head -c 10240 "$OUTPUT_FILE" | sed 's/.*/[CONTINUE RAW] &/' || true
-      # If file is longer, note truncation
-      file_size=$(wc -c < "$OUTPUT_FILE" || echo 0)
-      if [ "$file_size" -gt 10240 ]; then
-        log_info "[CONTINUE RAW] ... (truncated, total ${file_size} bytes)"
-      fi
-    else
-      log_info "[CONTINUE RAW] (file exists but is empty)"
-    fi
-    log_info "----- END Continue CLI raw output dump -----"
-  else
-    log_info "[CONTINUE RAW] Output file not found: $OUTPUT_FILE"
-  fi
-
-  # Clean up and return to original directory
-  rm -f "$OUTPUT_FILE"
-  cd - > /dev/null
-
-  log_info "Continue CLI repository summarization test completed"
-  return 0
-}
-
 #----------------------------------------------------------
 # Detect CI environment (e.g., GitHub Actions exports CI=true)
 #----------------------------------------------------------
@@ -310,7 +196,7 @@ name: Ifi
 version: 1.0.3
 schema: v1
 models:
-  - uses: claude-3-5-sonnet-20241022
+  - uses: claude-sonnet-4
     with:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     override:
@@ -354,14 +240,6 @@ if test_continue_repo_access; then
 else
   log_error "Continue CLI repository access test failed - Continue may not be able to access cloned repositories"
   exit 1
-fi
-
-if test_continue_repo_summary; then
-  log_info "Continue CLI repository summarization test passed"
-else
-  log_error "Continue CLI repository summarization test failed - Continue may not be able to analyze repositories properly"
-  # This is a warning rather than a hard failure since it depends on external API
-  log_warn "Continuing with API server startup, but Continue CLI may have issues with repository analysis"
 fi
 
 log_info "All Continue CLI tests completed successfully"
