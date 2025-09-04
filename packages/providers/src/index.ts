@@ -78,13 +78,17 @@ function createSearchCodebaseTool(mcptool: any) {
     }),
     async execute({ query, repository }: { query: string; repository?: string }) {
       console.log('[searchCodebaseCaptureTool] 🔍 ENTER - Starting capture run');
+      console.log('[searchCodebaseCaptureTool] 📝 Query:', query);
+      console.log('[searchCodebaseCaptureTool] 📁 Repository:', repository || 'auto-detect');
 
       // Resolve repository directory
       const reposDir = '/app/services/api/repos';
       let dirEntries: Dirent[];
       try {
         dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
+        console.log('[searchCodebaseCaptureTool] 📂 Found', dirEntries.filter(d => d.isDirectory()).length, 'directories in repos');
       } catch (e: any) {
+        console.log('[searchCodebaseCaptureTool] ❌ ERROR - Failed to read repos directory:', e.message);
         if (e?.code === 'ENOENT') {
           return { warning: true, message: '📂 The /app/services/api/repos directory does not exist.' };
         }
@@ -98,8 +102,12 @@ function createSearchCodebaseTool(mcptool: any) {
         : null;
 
       if (!repoDir) {
+        console.log('[searchCodebaseCaptureTool] ⚠️ WARNING - No repositories available');
         return { warning: true, message: '📂 No repositories available under /app/services/api/repos.' };
       }
+
+      console.log('[searchCodebaseCaptureTool] 🎯 Using repository directory:', repoDir);
+      console.log('[searchCodebaseCaptureTool] 🚀 Spawning command: cn -p "' + query + '"');
 
       const child = spawn('cn', ['-p', query], {
         cwd: repoDir,
@@ -107,33 +115,56 @@ function createSearchCodebaseTool(mcptool: any) {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
+      console.log('[searchCodebaseCaptureTool] ✅ Command spawned with PID:', child.pid);
+
       let stdoutBuf = '';
       let stderrBuf = '';
+      let stdoutChunks = 0;
+      let stderrChunks = 0;
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const text = chunk.toString('utf8');
         stdoutBuf += text;
+        stdoutChunks++;
+        console.log('[searchCodebaseCaptureTool] 📤 STDOUT chunk', stdoutChunks, '- received', chunk.length, 'bytes');
         try { process.stdout.write(text); } catch {}
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString('utf8');
         stderrBuf += text;
+        stderrChunks++;
+        console.log('[searchCodebaseCaptureTool] 📥 STDERR chunk', stderrChunks, '- received', chunk.length, 'bytes');
         try { process.stderr.write(text); } catch {}
       });
 
+      console.log('[searchCodebaseCaptureTool] ⏳ Waiting for command to complete...');
+
       const exitCode: number = await new Promise((resolve) => {
-        child.on('close', (code) => resolve(code ?? -1));
-        child.on('error', () => resolve(-1));
+        child.on('close', (code) => {
+          console.log('[searchCodebaseCaptureTool] 🏁 Command closed with exit code:', code ?? -1);
+          resolve(code ?? -1);
+        });
+        child.on('error', (err) => {
+          console.log('[searchCodebaseCaptureTool] ❌ Command error:', err.message);
+          resolve(-1);
+        });
       });
+
+      console.log('[searchCodebaseCaptureTool] 📊 Stream summary - STDOUT chunks:', stdoutChunks, ', STDERR chunks:', stderrChunks);
+      console.log('[searchCodebaseCaptureTool] 📊 Buffer sizes - STDOUT:', stdoutBuf.length, 'chars, STDERR:', stderrBuf.length, 'chars');
 
       const finalStdout = stdoutBuf.trim();
       const finalStderr = stderrBuf.trim();
       const final = finalStdout || finalStderr;
 
       if (!final) {
+        console.log('[searchCodebaseCaptureTool] ⚠️ WARNING - No output produced by Continue CLI');
         return { warning: true, message: 'Continue CLI produced no output.' };
       }
+
+      console.log('[searchCodebaseCaptureTool] ✅ SUCCESS - Returning output with', final.length, 'characters');
+      console.log('[searchCodebaseCaptureTool] 🔚 EXIT - Command completed successfully');
 
       return { output: final, exitCode, stderr: finalStderr } as any;
     },
