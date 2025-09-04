@@ -6,7 +6,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 // Shell Execution
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 import { Dirent, promises } from 'fs'
 // MCP helpers
@@ -64,225 +64,79 @@ function createReportCompletionTool(mcptool: any) {
   }) as any;
 }
 
+// Capture-to-stdout variant: mirror live output to stdout/stderr and return final output
 function createSearchCodebaseTool(mcptool: any) {
   return mcptool({
-    name: 'searchCodebase',
+    name: 'searchCodebaseCapture',
     description:
-      'Search a local cloned repository with Continue CLI using natural language queries.',
+      'Run Continue CLI (cn -p) streaming output to process stdout/stderr in real time, and return the final aggregated output when complete.',
     inputSchema: z.object({
       query: z.string().describe('Natural language question about the codebase'),
       repository: z
         .string()
-        .describe(
-          'Optional repository name (folder under /app/services/api/repos). Defaults to first available.',
-        )
+        .describe('Optional repository name (folder under /app/services/api/repos). Defaults to first available.')
         .optional(),
     }),
-    async execute(
-      {
-        query,
-        repository,
-      }: {
-        query: string;
-        repository?: string;
-      },
-    ) {
-      console.log('[searchCodebaseTool] 🔍 ENTER - Starting codebase search');
-      console.log('[searchCodebaseTool] 📝 Input parameters:', {
-        query: query.substring(0, 100) + (query.length > 100 ? '...' : ''),
-        repository: repository || 'undefined (will auto-detect)',
-        queryLength: query.length
+    async execute({ query, repository }: { query: string; repository?: string }) {
+      console.log('[searchCodebaseCaptureTool] 🔍 ENTER - Starting capture run');
+
+      // Resolve repository directory
+      const reposDir = '/app/services/api/repos';
+      let dirEntries: Dirent[];
+      try {
+        dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
+      } catch (e: any) {
+        if (e?.code === 'ENOENT') {
+          return { warning: true, message: '📂 The /app/services/api/repos directory does not exist.' };
+        }
+        throw e;
+      }
+
+      const repoDir = repository
+        ? `${reposDir}/${repository}`
+        : dirEntries.find((d) => d.isDirectory())?.name
+        ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
+        : null;
+
+      if (!repoDir) {
+        return { warning: true, message: '📂 No repositories available under /app/services/api/repos.' };
+      }
+
+      const child = spawn('cn', ['-p', query], {
+        cwd: repoDir,
+        env: { ...process.env, CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' },
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
-      try {
-        // Determine target repo directory (static fs import)
-        const reposDir = '/app/services/api/repos';
-        console.log('[searchCodebaseTool] 📂 Target repos directory:', reposDir);
+      let stdoutBuf = '';
+      let stderrBuf = '';
 
-        let dirEntries: Dirent[] | null = null;
-        console.log('[searchCodebaseTool] 🔍 Attempting to read repos directory...');
-        
-        try {
-          dirEntries = await promises.readdir(reposDir, { withFileTypes: true });
-          console.log('[searchCodebaseTool] ✅ Successfully read repos directory');
-          console.log('[searchCodebaseTool] 📋 Directory contents:', {
-            totalEntries: dirEntries.length,
-            entries: dirEntries.map(entry => ({
-              name: entry.name,
-              isDirectory: entry.isDirectory(),
-              isFile: entry.isFile()
-            }))
-          });
-        } catch (e: any) {
-          console.log('[searchCodebaseTool] ❌ Failed to read repos directory:', {
-            error: e.message,
-            code: e.code,
-            stack: e.stack?.substring(0, 200)
-          });
-          
-          if (e?.code === 'ENOENT') {
-            console.log('[searchCodebaseTool] 🚫 ENOENT detected - repos directory does not exist');
-            return {
-              warning: true,
-              message:
-                '📂 The /app/services/api/repos directory does not exist. Repository setup was likely skipped (e.g., during CI).',
-            };
-          }
-          throw e;
-        }
+      child.stdout?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString('utf8');
+        stdoutBuf += text;
+        try { process.stdout.write(text); } catch {}
+      });
 
-        // Determine which repository directory to use
-        console.log('[searchCodebaseTool] 🎯 Determining target repository directory...');
-        
-        const availableDirectories = dirEntries.filter(d => d.isDirectory());
-        console.log('[searchCodebaseTool] 📁 Available directories:', availableDirectories.map(d => d.name));
+      child.stderr?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString('utf8');
+        stderrBuf += text;
+        try { process.stderr.write(text); } catch {}
+      });
 
-        const repoDir = repository
-          ? `${reposDir}/${repository}`
-          : dirEntries.find((d) => d.isDirectory())?.name
-          ? `${reposDir}/${dirEntries.find((d) => d.isDirectory())!.name}`
-          : null;
+      const exitCode: number = await new Promise((resolve) => {
+        child.on('close', (code) => resolve(code ?? -1));
+        child.on('error', () => resolve(-1));
+      });
 
-        console.log('[searchCodebaseTool] 🎯 Repository directory resolution:', {
-          requestedRepository: repository,
-          resolvedRepoDir: repoDir,
-          resolutionMethod: repository ? 'explicit' : 'auto-detected'
-        });
+      const finalStdout = stdoutBuf.trim();
+      const finalStderr = stderrBuf.trim();
+      const final = finalStdout || finalStderr;
 
-        if (!repoDir) {
-          console.log('[searchCodebaseTool] ❌ No valid repository directory found');
-          return {
-            warning: true,
-            message:
-              '📂 The /app/services/api/repos directory exists but contains no cloned repositories. Repository setup may have been skipped (e.g., in CI).',
-          };
-        }
-
-        // Prepare and execute the Continue CLI command
-        const escaped = query.replace(/\"/g, '\\"');
-        const rawCmd = `cn -p "${escaped}"`;
-        console.log('[searchCodebaseTool] ⚡ Preparing Continue CLI command:', {
-          originalQuery: query.substring(0, 100) + (query.length > 100 ? '...' : ''),
-          escapedQuery: escaped.substring(0, 100) + (query.length > 100 ? '...' : ''),
-          command: rawCmd,
-          workingDirectory: repoDir,
-          maxBuffer: 5_000_000
-        });
-
-        console.log('[searchCodebaseTool] 🚀 Executing Continue CLI command...');
-        const execStart = Date.now();
-
-        // First attempt: direct invocation, capture both stdout and stderr
-        const { stdout, stderr } = await execAsync(rawCmd, {
-          cwd: repoDir,
-          maxBuffer: 5_000_000,
-          env: { ...process.env, CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' }
-        });
-
-        let out = (stdout || '').trim();
-        let errOut = (stderr || '').trim();
-        let finalOutput = out || errOut; // prefer stdout; fall back to stderr
-
-        let execTime = Date.now() - execStart;
-        console.log('[searchCodebaseTool] ✅ Continue CLI execution completed:', {
-          executionTimeMs: execTime,
-          stdoutLength: (stdout || '').length,
-          stderrLength: (stderr || '').length,
-          stdoutPreview: (stdout || '').substring(0, 200) + ((stdout || '').length > 200 ? '...' : ''),
-          stderrPreview: (stderr || '').substring(0, 200) + ((stderr || '').length > 200 ? '...' : ''),
-        });
-
-        // If we still have no output, retry via a pseudo-TTY to coax interactive CLIs to print
-        if (!finalOutput) {
-          const innerCmd = `cn -p "${escaped}"`;
-          const isDarwin = process.platform === 'darwin';
-          // On Linux (util-linux): script -q -c 'cmd' /dev/null
-          // On macOS (BSD script): script -q /dev/null /bin/bash -lc 'cmd'
-          const ttyCmd = isDarwin
-            ? `script -q /dev/null /bin/bash -lc '${innerCmd.replace(/'/g, `'"'"'`)}'`
-            : `script -q -c '${innerCmd.replace(/'/g, `'"'"'`)}' /dev/null`;
-
-          console.log('[searchCodebaseTool] ⚠️ No output from direct run, retrying with pseudo-TTY:', { ttyCmd, platform: process.platform });
-          const start2 = Date.now();
-          try {
-            const { stdout: ttyOut, stderr: ttyErr } = await execAsync(ttyCmd, {
-              cwd: repoDir,
-              maxBuffer: 5_000_000,
-              shell: '/bin/bash'
-            });
-            execTime = Date.now() - start2;
-            out = (ttyOut || '').trim();
-            errOut = (ttyErr || '').trim();
-            finalOutput = out || errOut;
-            console.log('[searchCodebaseTool] ✅ Pseudo-TTY execution completed:', {
-              executionTimeMs: execTime,
-              stdoutLength: (ttyOut || '').length,
-              stderrLength: (ttyErr || '').length,
-              outputPreview: (finalOutput || '').substring(0, 200) + ((finalOutput || '').length > 200 ? '...' : ''),
-              platform: process.platform
-            });
-          } catch (e: any) {
-            console.log('[searchCodebaseTool] ❌ Pseudo-TTY execution failed:', {
-              message: e.message,
-              code: e.code,
-              platform: process.platform,
-              stack: e.stack?.substring(0, 200)
-            });
-          }
-        }
-
-        console.log('[searchCodebaseTool] Continue CLI output:', {
-          channel: out ? 'stdout' : (errOut ? 'stderr' : 'none'),
-          output: finalOutput
-        });
-
-        // If still no output, provide diagnostics rather than returning empty
-        if (!finalOutput) {
-          console.log('[searchCodebaseTool] ⚠️ Continue CLI produced empty output; collecting diagnostics');
-          let diagVersion = '';
-          let diagHelp = '';
-          try {
-            const { stdout: vOut = '', stderr: vErr = '' } = await execAsync('cn --version', { cwd: repoDir, shell: '/bin/bash' });
-            diagVersion = (vOut || vErr || '').trim();
-          } catch (e: any) {
-            diagVersion = `version check failed: ${e.message}`;
-          }
-          try {
-            const { stdout: hOut = '', stderr: hErr = '' } = await execAsync('cn --help', { cwd: repoDir, shell: '/bin/bash', maxBuffer: 200_000 });
-            diagHelp = (hOut || hErr || '').substring(0, 300).trim();
-          } catch (e: any) {
-            diagHelp = `help check failed: ${e.message}`;
-          }
-          const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
-          const msg = [
-            '⚠️ Continue CLI returned no output. Possible causes:',
-            '- Missing or invalid ANTHROPIC_API_KEY (required by Continue config).',
-            "- Continue CLI waiting for interactive input that doesn't print in headless mode.",
-            '- Misconfigured ~/.continue/config.yaml.',
-            '',
-            `Env ANTHROPIC_API_KEY present: ${hasKey}`,
-            `cn --version: ${diagVersion || 'n/a'}`,
-            `cn --help (preview): ${diagHelp || 'n/a'}`,
-          ].join('\n');
-          console.log('[searchCodebaseTool] 🧪 Diagnostics summary:', { hasKey, diagVersion: diagVersion?.substring(0, 100), diagHelpPreview: diagHelp?.substring(0, 100) });
-          return { warning: true, output: msg } as any;
-        }
-
-        return { output: finalOutput };
-      } catch (err: any) {
-        console.error('[searchCodebaseTool] ❌ searchCodebase execution failed:', {
-          message: err.message,
-          code: err.code,
-          stack: err.stack?.substring(0, 200)
-        });
-        
-        return {
-          error: true,
-          message: `searchCodebase execution failed: ${err.message}`,
-        };
-      } finally {
-        console.log('[searchCodebaseTool] 🚪 EXIT');
+      if (!final) {
+        return { warning: true, message: 'Continue CLI produced no output.' };
       }
+
+      return { output: final, exitCode, stderr: finalStderr } as any;
     },
   }) as any;
 }
