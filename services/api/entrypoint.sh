@@ -196,7 +196,7 @@ name: Ifi
 version: 1.0.7
 schema: v1
 models:
-  - uses: openrouter/kimi-k2
+  - uses: ${PLANNER_MODEL}
     with:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
     override:
