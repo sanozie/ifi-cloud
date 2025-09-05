@@ -177,12 +177,57 @@ function createSearchCodebaseTool(mcptool: any) {
 
       // Handle execution error
       if (executionError && !result) {
-        console.log('[searchCodebaseCaptureTool] ❌ Command failed with error:', executionError.message);
+        console.log('[searchCodebaseCaptureTool] ❌ COMMAND EXECUTION FAILED - Detailed error analysis:');
+        console.log('[searchCodebaseCaptureTool] 🔍 Error message:', executionError.message);
+        console.log('[searchCodebaseCaptureTool] 🔍 Error type:', executionError.constructor.name);
+        console.log('[searchCodebaseCaptureTool] 🔍 Exit code:', executionError.code || 'unknown');
+        console.log('[searchCodebaseCaptureTool] 🔍 Signal:', executionError.signal || 'none');
+        console.log('[searchCodebaseCaptureTool] 🔍 Error number (errno):', executionError.errno || 'none');
+        console.log('[searchCodebaseCaptureTool] 🔍 System call:', executionError.syscall || 'none');
+        console.log('[searchCodebaseCaptureTool] 🔍 Error path:', executionError.path || 'none');
+        console.log('[searchCodebaseCaptureTool] 🔍 Command that failed: cn -p "' + query.replace(/"/g, '\\"') + '"');
+        console.log('[searchCodebaseCaptureTool] 🔍 Working directory:', repoDir);
+        
+        // Log stdout/stderr content even on failure (if available)
+        if (executionError.stdout) {
+          console.log('[searchCodebaseCaptureTool] 📤 STDOUT from failed command:');
+          console.log('  Length:', executionError.stdout.length, 'characters');
+          console.log('  Content:', executionError.stdout.substring(0, 1000) + (executionError.stdout.length > 1000 ? '... [TRUNCATED]' : ''));
+        } else {
+          console.log('[searchCodebaseCaptureTool] 📤 STDOUT: No output captured');
+        }
+        
+        if (executionError.stderr) {
+          console.log('[searchCodebaseCaptureTool] 📥 STDERR from failed command:');
+          console.log('  Length:', executionError.stderr.length, 'characters');
+          console.log('  Content:', executionError.stderr.substring(0, 1000) + (executionError.stderr.length > 1000 ? '... [TRUNCATED]' : ''));
+        } else {
+          console.log('[searchCodebaseCaptureTool] 📥 STDERR: No error output captured');
+        }
+        
+        // Additional debugging information
+        console.log('[searchCodebaseCaptureTool] 🔍 Process information:');
+        console.log('  ├─ PID:', process.pid);
+        console.log('  ├─ Platform:', process.platform);
+        console.log('  ├─ Architecture:', process.arch);
+        console.log('  ├─ Node.js version:', process.version);
+        console.log('  ├─ Current working directory:', process.cwd());
+        console.log('  └─ Memory usage:', JSON.stringify(process.memoryUsage(), null, 2));
+        
         return {
           warning: true,
           message: `Command failed: ${executionError.message}`,
           exitCode: executionError.code || -1,
-          executionTimeMs: totalTime
+          executionTimeMs: totalTime,
+          errorDetails: {
+            type: executionError.constructor.name,
+            signal: executionError.signal,
+            errno: executionError.errno,
+            syscall: executionError.syscall,
+            path: executionError.path,
+            stdout: executionError.stdout,
+            stderr: executionError.stderr
+          }
         };
       }
 

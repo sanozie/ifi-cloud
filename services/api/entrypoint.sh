@@ -196,7 +196,7 @@ name: Ifi
 version: 1.0.10
 schema: v1
 models:
-  - uses: anthropic/claude-4-sonnet
+  - uses: anthropic/claude-3-5-haiku-latest
     with:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     override:
