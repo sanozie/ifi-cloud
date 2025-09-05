@@ -64,22 +64,28 @@ function createReportCompletionTool(mcptool: any) {
   }) as any;
 }
 
-// Capture-to-stdout variant: mirror live output to stdout/stderr and return final output
+// Long-running command handler: Enhanced version with timeout management and periodic status updates
 function createSearchCodebaseTool(mcptool: any) {
   return mcptool({
     name: 'searchCodebaseCapture',
     description:
-      'Run Continue CLI (cn -p) streaming output to process stdout/stderr in real time, and return the final aggregated output when complete.',
+      'Run Continue CLI (cn -p) with enhanced long-running command support, including timeout management and periodic status updates.',
     inputSchema: z.object({
       query: z.string().describe('Natural language question about the codebase'),
       repository: z
         .string()
-        .describe('Repository name (folder under /app/services/api/repos)')
+        .describe('Repository name (folder under /app/services/api/repos)'),
+      timeoutMs: z
+        .number()
+        .optional()
+        .describe('Timeout in milliseconds (default: 300000 = 5 minutes)')
     }),
-    async execute({ query, repository }: { query: string; repository?: string }) {
-      console.log('[searchCodebaseCaptureTool] 🔍 ENTER - Starting capture run');
+    async execute({ query, repository, timeoutMs = 300000 }: { query: string; repository?: string; timeoutMs?: number }) {
+      const startTime = Date.now();
+      console.log('[searchCodebaseCaptureTool] 🔍 ENTER - Starting long-running capture run');
       console.log('[searchCodebaseCaptureTool] 📝 Query:', query);
       console.log('[searchCodebaseCaptureTool] 📁 Repository:', repository || 'auto-detect');
+      console.log('[searchCodebaseCaptureTool] ⏰ Timeout set to:', timeoutMs, 'ms');
 
       // Resolve repository directory
       const reposDir = '/app/services/api/repos';
@@ -107,66 +113,105 @@ function createSearchCodebaseTool(mcptool: any) {
       }
 
       console.log('[searchCodebaseCaptureTool] 🎯 Using repository directory:', repoDir);
-      console.log('[searchCodebaseCaptureTool] 🚀 Spawning command: cn -p "' + query + '"');
+      console.log('[searchCodebaseCaptureTool] 🚀 Executing command: cn -p "' + query + '"');
 
-      const child = spawn('cn', ['-p', query], {
-        cwd: repoDir,
-        env: { ...process.env, CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      // Use execAsync for direct block output collection instead of streaming
+      console.log('[searchCodebaseCaptureTool] ⏳ Waiting for complete stdout block (with timeout)...');
+      
+      let result: { stdout: string; stderr: string } | null = null;
+      let executionError: any = null;
+      let timedOut = false;
 
-      console.log('[searchCodebaseCaptureTool] ✅ Command spawned with PID:', child.pid);
+      // Periodic status logger for long-running commands
+      const statusInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        console.log('[searchCodebaseCaptureTool] 🕐 Status update:');
+        console.log(`  ├─ Elapsed: ${Math.round(elapsed / 1000)}s / ${Math.round(timeoutMs / 1000)}s`);
+        console.log(`  └─ Waiting for complete stdout/stderr blocks (no streaming events)`);
+      }, 30000); // Log status every 30 seconds
 
-      let stdoutBuf = '';
-      let stderrBuf = '';
-      let stdoutChunks = 0;
-      let stderrChunks = 0;
-
-      child.stdout?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString('utf8');
-        stdoutBuf += text;
-        stdoutChunks++;
-        console.log('[searchCodebaseCaptureTool] 📤 STDOUT chunk', stdoutChunks, '- received', chunk.length, 'bytes');
-        try { process.stdout.write(text); } catch {}
-      });
-
-      child.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString('utf8');
-        stderrBuf += text;
-        stderrChunks++;
-        console.log('[searchCodebaseCaptureTool] 📥 STDERR chunk', stderrChunks, '- received', chunk.length, 'bytes');
-        try { process.stderr.write(text); } catch {}
-      });
-
-      console.log('[searchCodebaseCaptureTool] ⏳ Waiting for command to complete...');
-
-      const exitCode: number = await new Promise((resolve) => {
-        child.on('close', (code) => {
-          console.log('[searchCodebaseCaptureTool] 🏁 Command closed with exit code:', code ?? -1);
-          resolve(code ?? -1);
+      try {
+        // Create a timeout promise
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            timedOut = true;
+            reject(new Error(`Command timed out after ${Math.round(timeoutMs / 1000)} seconds`));
+          }, timeoutMs);
         });
-        child.on('error', (err) => {
-          console.log('[searchCodebaseCaptureTool] ❌ Command error:', err.message);
-          resolve(-1);
+
+        // Execute command and race against timeout
+        const execPromise = execAsync('cn -p "' + query.replace(/"/g, '\\"') + '"', {
+          cwd: repoDir,
+          env: { ...process.env, CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' },
+          maxBuffer: 1024 * 1024 * 10, // 10MB buffer to handle large outputs
         });
-      });
 
-      console.log('[searchCodebaseCaptureTool] 📊 Stream summary - STDOUT chunks:', stdoutChunks, ', STDERR chunks:', stderrChunks);
-      console.log('[searchCodebaseCaptureTool] 📊 Buffer sizes - STDOUT:', stdoutBuf.length, 'chars, STDERR:', stderrBuf.length, 'chars');
+        result = await Promise.race([execPromise, timeoutPromise]);
+        
+      } catch (error: any) {
+        executionError = error;
+        if (!timedOut) {
+          console.log('[searchCodebaseCaptureTool] ❌ Command execution error:', error.message);
+        } else {
+          console.log('[searchCodebaseCaptureTool] ⏰ TIMEOUT - Command exceeded timeout limit');
+        }
+      } finally {
+        clearInterval(statusInterval);
+      }
 
-      const finalStdout = stdoutBuf.trim();
-      const finalStderr = stderrBuf.trim();
+      const totalTime = Date.now() - startTime;
+      console.log('[searchCodebaseCaptureTool] ⏱️ Total execution time:', Math.round(totalTime / 1000), 'seconds');
+
+      // Handle timeout case
+      if (timedOut) {
+        const timeoutMsg = `Command timed out after ${Math.round(timeoutMs / 1000)} seconds`;
+        console.log('[searchCodebaseCaptureTool] ⏰ TIMEOUT RESULT -', timeoutMsg);
+        return { 
+          timeout: true, 
+          message: timeoutMsg,
+          partialOutput: null, // execAsync doesn't provide partial output on timeout
+          exitCode: -2,
+          executionTimeMs: totalTime
+        };
+      }
+
+      // Handle execution error
+      if (executionError && !result) {
+        console.log('[searchCodebaseCaptureTool] ❌ Command failed with error:', executionError.message);
+        return {
+          warning: true,
+          message: `Command failed: ${executionError.message}`,
+          exitCode: executionError.code || -1,
+          executionTimeMs: totalTime
+        };
+      }
+
+      const finalStdout = result?.stdout?.trim() || '';
+      const finalStderr = result?.stderr?.trim() || '';
       const final = finalStdout || finalStderr;
+
+      console.log('[searchCodebaseCaptureTool] 📊 Output summary - STDOUT:', finalStdout.length, 'chars, STDERR:', finalStderr.length, 'chars');
 
       if (!final) {
         console.log('[searchCodebaseCaptureTool] ⚠️ WARNING - No output produced by Continue CLI');
-        return { warning: true, message: 'Continue CLI produced no output.' };
+        return { 
+          warning: true, 
+          message: 'Continue CLI produced no output.',
+          exitCode: 0, // execAsync completed without error but no output
+          executionTimeMs: totalTime
+        };
       }
 
       console.log('[searchCodebaseCaptureTool] ✅ SUCCESS - Returning output with', final.length, 'characters');
       console.log('[searchCodebaseCaptureTool] 🔚 EXIT - Command completed successfully');
 
-      return { output: final, exitCode, stderr: finalStderr } as any;
+      return { 
+        output: final, 
+        exitCode: 0, // execAsync completed successfully
+        stderr: finalStderr,
+        executionTimeMs: totalTime,
+        blockBased: true // Indicator that we're using block-based approach, not streaming
+      } as any;
     },
   }) as any;
 }
