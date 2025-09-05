@@ -193,18 +193,15 @@ if [ ! -f "$CONTINUE_CONFIG_DIR/config.yaml" ]; then
   log_info "Setting up Continue CLI configuration"
   cat > "$CONTINUE_CONFIG_DIR/config.yaml" << EOF
 name: Ifi
-version: 1.0.7
+version: 1.0.10
 schema: v1
 models:
-  - name: Sonnet
-    provider: openrouter
-    model: ${PLANNER_MODEL}
-    apiBase: https://openrouter.ai/api/v1
-    apiKey: ${OPENROUTER_API_KEY}
-    capabilities:
-      - tool_use
-    roles:
-      - chat
+  - uses: anthropic/claude-4-sonnet
+    with:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    override:
+      roles:
+        - chat
 context:
   - uses: continuedev/terminal-context
   - uses: continuedev/file-context
