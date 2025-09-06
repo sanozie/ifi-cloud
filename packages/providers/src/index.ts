@@ -470,9 +470,7 @@ export async function plan({ messages, onFinish, config = {} }:
     console.log(`[plan] 🛠️  Tools configured: ${Object.keys(tools).join(', ')}`);
 
     // System message that's always included
-    const systemMessage: ModelMessage = {
-      role: 'system',
-      content: `
+    const system = `
 You are IFI, an AI engineering assistant that guides a user through THREE distinct stages:
 
 1. **Planning Discussion** – Conversational back-and-forth to understand the user’s goal.
@@ -507,15 +505,15 @@ Thread title management:
 • Choose a concise, human-friendly title that accurately represents the thread overall. Prefer specific, outcome-oriented phrasing (e.g., "Implement long-press rename for threads") over vague titles.
 • If a thread identifier is provided in system context (e.g., "Thread Context: threadId=…"), use that threadId when calling update_title.
 • If no threadId is known, do not guess; continue planning without renaming.
-`,
-    };
+`
 
     console.log(`[plan] 🚀 Calling streamText(model="${mergedConfig.plannerModel}") …`);
 
     // Delegate
     return streamText({
       model: openrouter(mergedConfig.plannerModel),
-      messages: [systemMessage, ...messages],
+      system,
+      messages: messages,
       tools,
       onFinish,
       stopWhen: (response: any) => response.toolCalls?.some(
