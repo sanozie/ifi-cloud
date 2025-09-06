@@ -64,14 +64,14 @@ function createReportCompletionTool(mcptool: any) {
   }) as any;
 }
 
-// Long-running command handler: Enhanced version with timeout management and periodic status updates
+
 function createSearchCodebaseTool(mcptool: any) {
   return mcptool({
     name: 'searchCodebaseCapture',
     description:
-      'Run Continue CLI (cn -p) with enhanced long-running command support, including timeout management and periodic status updates.',
+      'Run Continue CLI (cn -p) to ask the Continue CLI AI Agent questions about the particular codebase. Questions should be formatted as human-like full sentences.',
     inputSchema: z.object({
-      query: z.string().describe('Natural language question about the codebase'),
+      query: z.string().describe('Natural language question about the codebase, formatted as human-like full sentences.'),
       repository: z
         .string()
         .describe('Repository name (folder under /app/services/api/repos)'),
@@ -139,6 +139,7 @@ function createSearchCodebaseTool(mcptool: any) {
           }, timeoutMs);
         });
 
+        console.log('[searchCodebaseCaptureTool] doing -> ' + 'cn -p "' + query.replace(/"/g, '\\"') + '"')
         // Execute command and race against timeout
         const execPromise = execAsync('cn -p "' + query.replace(/"/g, '\\"') + '"', {
           cwd: repoDir,
@@ -491,8 +492,9 @@ Tool usage rules:
 Branch-context tools:  
 • If you are unsure which branch is currently checked-out (or whether the repo exists locally), CALL the \`get_current_branch\` tool with the \`repo\` parameter.  
 • When you need to work on an **UPDATE** spec or otherwise switch to a different branch, CALL the \`checkout_branch\` tool with the desired \`repo\` and \`branch\`.  
-• Use these tools to ensure the **continue** CLI receives the correct code context before performing any codebase queries.  
+• Use these tools to ensure the **continue** CLI receives the correct code context before performing any codebase queries.
 • To view all available branches (local & remote) before deciding, CALL the \`get_branches\` tool.
+• The \`search_codebase\` tool gives you access to an AI agent capable of answering complex questions about a particular repo. Use it when you need to gather context from the actual code, and format your query as human-like full sentences.
 
 General guidelines:
 • Keep all normal conversation messages concise and focused.  
