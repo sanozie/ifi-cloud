@@ -196,12 +196,16 @@ name: Ifi
 version: 1.0.10
 schema: v1
 models:
-  - uses: anthropic/claude-3-5-haiku-latest
-    with:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-    override:
-      roles:
-        - chat
+  - name: GPT OSS 120B
+    provider: openrouter
+    model: openai/gpt-oss-120b
+    apiKey: ${OPENROUTER_API_KEY}
+    defaultCompletionOptions:
+      contextLength: 131072
+    capabilities:
+      - tool_use
+    roles:
+      - chat
 context:
   - uses: continuedev/terminal-context
   - uses: continuedev/file-context
